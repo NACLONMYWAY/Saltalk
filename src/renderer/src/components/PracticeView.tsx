@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { useAppStore } from '../store.ts'
 import { CEFR_LEVELS } from '../../../../shared/types.ts'
 import DialoguePlayer from './DialoguePlayer.tsx'
@@ -8,6 +7,7 @@ export default function PracticeView() {
   const level = useAppStore((s) => s.level)
   const sentences = useAppStore((s) => s.sentences)
   const generating = useAppStore((s) => s.generating)
+  const synthing = useAppStore((s) => s.synthing)
   const error = useAppStore((s) => s.error)
   const setTopic = useAppStore((s) => s.setTopic)
   const setLevel = useAppStore((s) => s.setLevel)
@@ -15,16 +15,9 @@ export default function PracticeView() {
   const pickRandomTopic = useAppStore((s) => s.pickRandomTopic)
   const synthesize = useAppStore((s) => s.synthesize)
 
-  const [synthing, setSynthing] = useState(false)
-
   async function handleGenerate(): Promise<void> {
     await generate()
-    setSynthing(true)
-    try {
-      await synthesize()
-    } finally {
-      setSynthing(false)
-    }
+    await synthesize()
   }
 
   return (
@@ -36,18 +29,18 @@ export default function PracticeView() {
           onChange={(e) => setTopic(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleGenerate()}
           placeholder="输入主题"
-          className="flex-1 bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-zinc-500"
+          className="flex-1 bg-white border border-zinc-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-zinc-400 dark:bg-zinc-900 dark:border-zinc-700 dark:focus:border-zinc-500 transition-colors"
         />
         <button
           onClick={pickRandomTopic}
-          className="px-3 py-2 rounded-md text-sm bg-zinc-900 border border-zinc-700 hover:bg-zinc-800"
+          className="px-3 py-2 rounded-lg text-sm bg-white border border-zinc-300 hover:bg-zinc-100 dark:bg-zinc-900 dark:border-zinc-700 dark:hover:bg-zinc-800 transition-colors"
         >
           随机
         </button>
         <select
           value={level}
           onChange={(e) => setLevel(e.target.value as typeof level)}
-          className="bg-zinc-900 border border-zinc-700 rounded-md px-2 py-2 text-sm"
+          className="bg-white border border-zinc-300 rounded-lg px-2 py-2 text-sm dark:bg-zinc-900 dark:border-zinc-700"
         >
           {CEFR_LEVELS.map((l) => (
             <option key={l} value={l}>
@@ -58,17 +51,17 @@ export default function PracticeView() {
         <button
           onClick={handleGenerate}
           disabled={generating}
-          className="px-4 py-2 rounded-md text-sm bg-zinc-100 text-zinc-900 font-medium disabled:opacity-50"
+          className="px-4 py-2 rounded-lg text-sm bg-zinc-900 text-zinc-50 font-medium disabled:opacity-50 hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300 transition-colors"
         >
           {generating ? '生成中…' : '生成对话'}
         </button>
       </div>
 
-      {error && <div className="text-red-400 text-sm">{error}</div>}
+      {error && <div className="text-red-500 dark:text-red-400 text-sm">{error}</div>}
 
       {(generating || synthing) && (
-        <div className="text-zinc-400 text-sm flex items-center gap-2 py-4">
-          <span className="inline-block w-3 h-3 border-2 border-zinc-500 border-t-transparent rounded-full animate-spin" />
+        <div className="text-zinc-500 dark:text-zinc-400 text-sm flex items-center gap-2 py-4">
+          <span className="inline-block w-3 h-3 border-2 border-zinc-400 dark:border-zinc-500 border-t-transparent rounded-full animate-spin" />
           {generating ? '正在生成对话…' : '正在合成语音…'}
         </div>
       )}

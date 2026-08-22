@@ -98,6 +98,7 @@ export class AppService {
     }
 
     const now = Date.now()
+    const exampleAudioPath = sourceSentenceId ? this.db.getSentenceAudioPath(sourceSentenceId) : null
     const record: WordRecord = {
       id: randomUUID(),
       word,
@@ -105,6 +106,8 @@ export class AppService {
       phonetic: null,
       example,
       exampleTranslation,
+      wordAudioPath: null,
+      exampleAudioPath,
       sourceSentenceId,
       addedAt: now,
       reviewCount: 0,
@@ -113,13 +116,13 @@ export class AppService {
     }
     this.db.addWord(record)
 
-    // 后台异步补全释义，不阻塞加入操作
+    // 后台异步补全释义与单词读音，不阻塞加入操作
     void this.enrichWord(word, record.id)
 
     return record
   }
 
-  /** 后台查词典 + 翻译，补全单词释义与音标 */
+  /** 后台查词典 + 翻译 + 合成单词读音 */
   private async enrichWord(word: string, id: string): Promise<void> {
     let meaning: string | null = null
     let phonetic: string | null = null
@@ -145,6 +148,20 @@ export class AppService {
     }
 
     this.db.updateWordMeaning(id, meaning, phonetic)
+
+    // 合成单词读音（缓存复用）
+    try {
+      const audioPath = await synthesize({
+        text: word,
+        voice: SPEAKER_VOICE.B,
+        rate: rateValue(false),
+        outDir: this.audioDir,
+        fileName: `word_${word}.mp3`
+      })
+      this.db.updateWordAudio(id, audioPath)
+    } catch {
+      // 读音合成失败忽略
+    }
   }
 
   /** 复习单词并更新间隔计划 */

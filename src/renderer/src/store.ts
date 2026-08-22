@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { api } from './api.ts'
-import type { SentenceView } from '../../preload/index.ts'
+import type { SentenceView, WordView } from '../../preload/index.ts'
 import type { CEFRLevel, Dialogue, WordRecord } from '../../../shared/types.ts'
 import type { WordStats } from '../../../shared/stats.ts'
 
@@ -17,6 +17,7 @@ interface AppState {
   sentences: SentenceView[]
   conversationId: string | null
   generating: boolean
+  synthing: boolean
   error: string | null
   setTopic: (topic: string) => void
   setLevel: (level: CEFRLevel) => void
@@ -26,12 +27,13 @@ interface AppState {
   loadConversation: (id: string) => Promise<void>
 
   // words
-  words: WordRecord[]
+  words: WordView[]
   dueWords: WordRecord[]
   stats: WordStats | null
   refreshWords: () => Promise<void>
   addWord: (rawWord: string, sourceSentenceId: string | null, example: string | null, exampleTranslation: string | null) => Promise<void>
   deleteWord: (id: string) => Promise<void>
+  markWordMastered: (id: string, mastered: boolean) => Promise<void>
   reviewWord: (id: string, remembered: boolean) => Promise<void>
 
   // settings
@@ -50,6 +52,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
   sentences: [],
   conversationId: null,
   generating: false,
+  synthing: false,
   error: null,
   setTopic: (topic) => set({ topic }),
   setLevel: (level) => set({ level }),
@@ -79,12 +82,15 @@ export const useAppStore = create<AppState>()((set, get) => ({
   synthesize: async () => {
     const { conversationId } = get()
     if (!conversationId) return
+    set({ synthing: true })
     try {
       await api.synthesizeAll(conversationId)
       const sentences = await api.listSentences(conversationId)
       set({ sentences })
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) })
+    } finally {
+      set({ synthing: false })
     }
   },
 
@@ -121,6 +127,11 @@ export const useAppStore = create<AppState>()((set, get) => ({
 
   deleteWord: async (id) => {
     await api.deleteWord(id)
+    await get().refreshWords()
+  },
+
+  markWordMastered: async (id, mastered) => {
+    await api.markWordMastered(id, mastered)
     await get().refreshWords()
   },
 

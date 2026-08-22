@@ -47,6 +47,8 @@ export interface WordRecord {
   phonetic: string | null
   example: string | null
   exampleTranslation: string | null
+  wordAudioPath: string | null
+  exampleAudioPath: string | null
   sourceSentenceId: string | null
   addedAt: number
   reviewCount: number

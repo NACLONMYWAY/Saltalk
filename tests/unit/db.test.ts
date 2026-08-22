@@ -73,6 +73,8 @@ describe('AppDatabase - conversation', () => {
       phonetic: null,
       example: null,
       exampleTranslation: null,
+      wordAudioPath: null,
+      exampleAudioPath: null,
       sourceSentenceId: null,
       addedAt: 1000,
       reviewCount: 0,
@@ -120,6 +122,8 @@ describe('AppDatabase - word', () => {
     phonetic: '/ˈkɒfi/',
     example: 'I ordered a coffee.',
     exampleTranslation: '我点了一杯咖啡',
+    wordAudioPath: null,
+    exampleAudioPath: null,
     sourceSentenceId: 's1',
     addedAt: 1000,
     reviewCount: 0,
@@ -161,6 +165,14 @@ describe('AppDatabase - word', () => {
     assert.equal(w!.reviewCount, 3)
     assert.equal(w!.nextReviewAt, 9000)
     assert.equal(w!.status, 'mastered')
+  })
+
+  it('marks word mastered / unmastered', () => {
+    db.addWord(baseWord())
+    db.markWordMastered('w1', true)
+    assert.equal(db.getWord('w1')!.status, 'mastered')
+    db.markWordMastered('w1', false)
+    assert.equal(db.getWord('w1')!.status, 'learning')
   })
 
   it('counts words and sentences', () => {

@@ -34,12 +34,9 @@ app.whenReady().then(() => {
   const audioDir = join(dataDir, 'audio')
   db = new AppDatabase(join(dataDir, 'app.db'))
 
-  // 版本变化时彻底重置所有数据（含 API key），保证新装后干净
-  const currentVersion = app.getVersion()
-  if (db.getConfig('app_version') !== currentVersion) {
-    db.clearEverything()
-    db.setConfig('app_version', currentVersion)
-  }
+  // 记录当前版本号，但不做任何数据清理：
+  // 新装时数据库本就是空的；升级时应保留用户数据（单词本/历史/API key）
+  db.setConfig('app_version', app.getVersion())
 
   service = new AppService(db, audioDir)
   registerIpc(db, service)

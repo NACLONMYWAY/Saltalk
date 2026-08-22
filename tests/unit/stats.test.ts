@@ -13,6 +13,8 @@ function word(overrides: Partial<WordRecord> = {}): WordRecord {
     phonetic: null,
     example: null,
     exampleTranslation: null,
+    wordAudioPath: null,
+    exampleAudioPath: null,
     sourceSentenceId: null,
     addedAt: 0,
     reviewCount: 0,

@@ -37,6 +37,8 @@ interface WordRow {
   phonetic: string | null
   example: string | null
   example_translation: string | null
+  word_audio_path: string | null
+  example_audio_path: string | null
   source_sentence_id: string | null
   added_at: number
   review_count: number
@@ -66,6 +68,12 @@ export class AppDatabase {
     const wordNames = new Set(wordCols.map((c) => c.name))
     if (!wordNames.has('example_translation')) {
       this.db.exec('ALTER TABLE word ADD COLUMN example_translation TEXT')
+    }
+    if (!wordNames.has('word_audio_path')) {
+      this.db.exec('ALTER TABLE word ADD COLUMN word_audio_path TEXT')
+    }
+    if (!wordNames.has('example_audio_path')) {
+      this.db.exec('ALTER TABLE word ADD COLUMN example_audio_path TEXT')
     }
   }
 
@@ -153,8 +161,8 @@ export class AppDatabase {
     this.db
       .prepare(
         `INSERT INTO word
-         (id, word, meaning, phonetic, example, example_translation, source_sentence_id, added_at, review_count, next_review_at, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         (id, word, meaning, phonetic, example, example_translation, word_audio_path, example_audio_path, source_sentence_id, added_at, review_count, next_review_at, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         record.id,
@@ -163,6 +171,8 @@ export class AppDatabase {
         record.phonetic,
         record.example,
         record.exampleTranslation,
+        record.wordAudioPath,
+        record.exampleAudioPath,
         record.sourceSentenceId,
         record.addedAt,
         record.reviewCount,
@@ -193,6 +203,26 @@ export class AppDatabase {
   /** 后台补全单词释义（查词典/翻译完成后更新） */
   updateWordMeaning(id: string, meaning: string | null, phonetic: string | null): void {
     this.db.prepare('UPDATE word SET meaning = ?, phonetic = ? WHERE id = ?').run(meaning, phonetic, id)
+  }
+
+  /** 查询句子的正常语速音频路径 */
+  getSentenceAudioPath(id: string): string | null {
+    const row = this.db.prepare('SELECT audio_path FROM sentence WHERE id = ?').get(id) as
+      | { audio_path: string | null }
+      | undefined
+    return row ? row.audio_path : null
+  }
+
+  /** 更新单词读音路径（合成完成后） */
+  updateWordAudio(id: string, audioPath: string): void {
+    this.db.prepare('UPDATE word SET word_audio_path = ? WHERE id = ?').run(audioPath, id)
+  }
+
+  /** 标记单词已背/未背 */
+  markWordMastered(id: string, mastered: boolean): void {
+    this.db
+      .prepare('UPDATE word SET status = ? WHERE id = ?')
+      .run(mastered ? 'mastered' : 'learning', id)
   }
 
   getDueWords(now: number): WordRecord[] {
@@ -251,6 +281,8 @@ function rowToWord(row: WordRow): WordRecord {
     phonetic: row.phonetic,
     example: row.example,
     exampleTranslation: row.example_translation,
+    wordAudioPath: row.word_audio_path,
+    exampleAudioPath: row.example_audio_path,
     sourceSentenceId: row.source_sentence_id,
     addedAt: row.added_at,
     reviewCount: row.review_count,

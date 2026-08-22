@@ -7,6 +7,11 @@ export interface SentenceView extends SentenceRecord {
   slowAudioUrl: string | null
 }
 
+export interface WordView extends WordRecord {
+  wordAudioUrl: string | null
+  exampleAudioUrl: string | null
+}
+
 const api = {
   // config
   getConfig: (key: string): Promise<string | null> => ipcRenderer.invoke('config:get', key),
@@ -42,9 +47,11 @@ const api = {
     exampleTranslation: string | null
   ): Promise<WordRecord> =>
     ipcRenderer.invoke('word:add', rawWord, sourceSentenceId, example, exampleTranslation),
-  listWords: (): Promise<WordRecord[]> => ipcRenderer.invoke('word:list'),
+  listWords: (): Promise<WordView[]> => ipcRenderer.invoke('word:list'),
   getDueWords: (): Promise<WordRecord[]> => ipcRenderer.invoke('word:due'),
   deleteWord: (id: string): Promise<void> => ipcRenderer.invoke('word:delete', id),
+  markWordMastered: (id: string, mastered: boolean): Promise<void> =>
+    ipcRenderer.invoke('word:markMastered', id, mastered),
   reviewWord: (id: string, remembered: boolean): Promise<void> =>
     ipcRenderer.invoke('word:review', id, remembered),
 

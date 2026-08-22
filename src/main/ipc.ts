@@ -3,11 +3,16 @@ import { pathToFileURL } from 'node:url'
 import { AppDatabase } from './db.ts'
 import { AppService } from './service.ts'
 import { randomTopic } from '../../shared/topics.ts'
-import type { CEFRLevel, SentenceRecord } from '../../shared/types.ts'
+import type { CEFRLevel, SentenceRecord, WordRecord } from '../../shared/types.ts'
 
 export interface SentenceView extends SentenceRecord {
   audioUrl: string | null
   slowAudioUrl: string | null
+}
+
+export interface WordView extends WordRecord {
+  wordAudioUrl: string | null
+  exampleAudioUrl: string | null
 }
 
 function toSentenceView(s: SentenceRecord): SentenceView {
@@ -15,6 +20,14 @@ function toSentenceView(s: SentenceRecord): SentenceView {
     ...s,
     audioUrl: s.audioPath ? pathToFileURL(s.audioPath).href : null,
     slowAudioUrl: s.slowAudioPath ? pathToFileURL(s.slowAudioPath).href : null
+  }
+}
+
+function toWordView(w: WordRecord): WordView {
+  return {
+    ...w,
+    wordAudioUrl: w.wordAudioPath ? pathToFileURL(w.wordAudioPath).href : null,
+    exampleAudioUrl: w.exampleAudioPath ? pathToFileURL(w.exampleAudioPath).href : null
   }
 }
 
@@ -54,9 +67,12 @@ export function registerIpc(db: AppDatabase, service: AppService): void {
     (_e, rawWord: string, sourceSentenceId: string | null, example: string | null, exampleTranslation: string | null) =>
       service.addWordToBook(rawWord, sourceSentenceId, example, exampleTranslation)
   )
-  ipcMain.handle('word:list', () => db.listWords())
+  ipcMain.handle('word:list', () => db.listWords().map(toWordView))
   ipcMain.handle('word:due', () => db.getDueWords(Date.now()))
   ipcMain.handle('word:delete', (_e, id: string) => db.deleteWord(id))
+  ipcMain.handle('word:markMastered', (_e, id: string, mastered: boolean) =>
+    db.markWordMastered(id, mastered)
+  )
   ipcMain.handle('word:review', (_e, id: string, remembered: boolean) =>
     service.reviewWord(id, remembered)
   )

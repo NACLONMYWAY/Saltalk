@@ -31,6 +31,8 @@ CREATE TABLE IF NOT EXISTS word (
   phonetic         TEXT,
   example          TEXT,
   example_translation TEXT,
+  word_audio_path  TEXT,
+  example_audio_path TEXT,
   source_sentence_id TEXT,
   added_at         INTEGER NOT NULL,
   review_count     INTEGER DEFAULT 0,
