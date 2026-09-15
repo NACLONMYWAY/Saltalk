@@ -202,7 +202,18 @@ export const useAppStore = create<AppState>()((set, get) => ({
   changeSystem: async (system) => {
     const prev = get().system
     const level = await api.setSystem(system)
-    set({ system, level })
+    // 体系变了，练习页上残留的旧内容就不再对应（例如 CEFR 对话在四六级模式下
+    // 没有题目数据，会渲染出一个空壳）。这里一并清掉，让用户重新生成。
+    // 旧内容仍可在「历史」里找回。
+    set({
+      system,
+      level,
+      sentences: [],
+      questions: [],
+      dialogue: null,
+      conversationId: null,
+      error: null
+    })
 
     // 若用户没有自定义过音色，则跟随体系切换默认搭配
     // （CEFR/雅思：美音男女；四六级：美音 + 英音，贴近真题口音分布）

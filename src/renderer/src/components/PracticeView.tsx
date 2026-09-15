@@ -85,7 +85,18 @@ export default function PracticeView() {
         </div>
       )}
 
-      {hasContent && (isExam ? <CetPlayer sentences={sentences} questions={questions} /> : <DialoguePlayer sentences={sentences} />)}
+      {isExam && hasContent && questions.length === 0 && (
+        <p className="text-xs text-amber-600 dark:text-amber-400">
+          当前内容是旧的（不含题目数据），已按普通对话显示。点「重新生成」按四六级形式出题。
+        </p>
+      )}
+
+      {hasContent &&
+        (isExam && questions.length > 0 ? (
+          <CetPlayer sentences={sentences} questions={questions} />
+        ) : (
+          <DialoguePlayer sentences={sentences} />
+        ))}
     </div>
   )
 }

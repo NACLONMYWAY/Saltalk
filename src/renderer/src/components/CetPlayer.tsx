@@ -48,7 +48,7 @@ export default function CetPlayer({ sentences, questions }: CetPlayerProps) {
     slowRef.current = slow
   }, [slow])
 
-  // 题目集合变化（新生成/切换对话）时重置整场考试
+  // 题目集合变化（新生成 / 切换对话）时重置整场
   const signature = useMemo(() => questions.map((q) => q.id).join('|'), [questions])
   useEffect(() => {
     setPhase('idle')
@@ -78,7 +78,7 @@ export default function CetPlayer({ sentences, questions }: CetPlayerProps) {
     }
   }, [])
 
-  // ---------- 状态流转 ----------
+  // ---------- 真题节奏：对话 → 逐题读题干 → 每题 15 秒 ----------
 
   function onDialogueEnd(): void {
     dialogueAudioRef.current?.pause()
@@ -113,6 +113,7 @@ export default function CetPlayer({ sentences, questions }: CetPlayerProps) {
   }
 
   function startListening(): void {
+    if (questionsRef.current.length === 0) return
     const empty = new Array<number | null>(questionsRef.current.length).fill(null)
     answersRef.current = empty
     setAnswers(empty)
@@ -129,19 +130,40 @@ export default function CetPlayer({ sentences, questions }: CetPlayerProps) {
     const audio = stemAudioRef.current
     setQIndex(i)
     qIndexRef.current = i
+    // 之前已自由作答过的题跳过，直接进下一题
+    if (isAnswered(answersRef.current[i])) {
+      const next = nextQuestionIndex(i, questionsRef.current.length)
+      if (next !== null) {
+        playStem(next)
+        return
+      }
+      finish()
+      return
+    }
     setPhase('stem')
     const url = questionsRef.current[i]?.stemAudioUrl
     if (!audio || !url) {
-      startAnswer(i)
+      enterAnswerWindow(i)
       return
     }
     audio.pause()
     audio.src = url
-    audio.onended = () => startAnswer(i)
-    audio.play().catch(() => startAnswer(i))
+    audio.onended = () => enterAnswerWindow(i)
+    audio.play().catch(() => enterAnswerWindow(i))
+  }
+
+  /**
+   * 进入某题的答题窗口。
+   * 已作答就直接返回：用户可能在题干还没念完时就选了答案，
+   * 这时音频结束不该再开一个 15 秒窗口，否则等于多给一次机会。
+   */
+  function enterAnswerWindow(i: number): void {
+    if (isAnswered(answersRef.current[i])) return
+    startAnswer(i)
   }
 
   function startAnswer(i: number): void {
+    if (isAnswered(answersRef.current[i])) return
     setQIndex(i)
     qIndexRef.current = i
     setCountdown(ANSWER_SECONDS)
@@ -163,20 +185,29 @@ export default function CetPlayer({ sentences, questions }: CetPlayerProps) {
   }, [phase, countdown])
 
   function finish(): void {
+    dialogueAudioRef.current?.pause()
     stemAudioRef.current?.pause()
     setPlayingSeq(-1)
     setPhase('finished')
     setShowTranscript(true)
   }
 
-  function pick(optionIndex: number): void {
-    const i = qIndexRef.current
+  /**
+   * 作答。选项从一开头就全部可见（真题里选项本就印在试卷上），
+   * 所以不强制「必须等念到这一题」才能选。
+   */
+  function pick(i: number, optionIndex: number): void {
     if (isAnswered(answersRef.current[i])) return
     const next = [...answersRef.current]
     next[i] = optionIndex
     answersRef.current = next
     setAnswers(next)
-    setPhase('answered')
+
+    if (i === qIndexRef.current && (phase === 'answering' || phase === 'stem')) {
+      // 答完当前题就停表，让人有时间看解析（学习场景优先于还原度）
+      setPhase('answered')
+    }
+    if (next.every((a) => isAnswered(a))) finish()
   }
 
   function goNext(): void {
@@ -185,10 +216,10 @@ export default function CetPlayer({ sentences, questions }: CetPlayerProps) {
     else finish()
   }
 
-  /** 重听题干：不改变当前状态，仅重播音频 */
-  function replayStem(): void {
+  /** 重听某题题干：不改变当前状态，仅重播音频 */
+  function replayStem(i: number): void {
     const audio = stemAudioRef.current
-    const url = questionsRef.current[qIndexRef.current]?.stemAudioUrl
+    const url = questionsRef.current[i]?.stemAudioUrl
     if (!audio || !url) return
     audio.pause()
     audio.onended = null
@@ -217,26 +248,41 @@ export default function CetPlayer({ sentences, questions }: CetPlayerProps) {
   const total = questions.length
   const answeredCount = answers.filter(isAnswered).length
   const correctCount = countCorrect(answers, questions)
-  const current = questions[qIndex]
-  const currentAnswered = isAnswered(answers[qIndex])
   const running = phase === 'dialogue' || phase === 'stem' || phase === 'answering' || phase === 'answered'
+
+  if (total === 0) {
+    return (
+      <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+        当前内容不是四六级听力题（没有题目数据）。请点上方「生成听力题」重新生成。
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-4">
       {/* 工具栏 */}
       <div className="flex gap-2 items-center flex-wrap text-sm">
         {phase === 'idle' && (
-          <button onClick={startListening} className="px-4 py-1.5 rounded-lg bg-zinc-900 text-zinc-50 font-medium hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300 transition-colors">
+          <button
+            onClick={startListening}
+            className="px-4 py-1.5 rounded-lg bg-zinc-900 text-zinc-50 font-medium hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300 transition-colors"
+          >
             开始听力
           </button>
         )}
         {running && (
-          <button onClick={stopAll} className="px-3 py-1.5 rounded-lg bg-white border border-zinc-300 hover:bg-zinc-100 dark:bg-zinc-900 dark:border-zinc-700 dark:hover:bg-zinc-800 transition-colors">
+          <button
+            onClick={stopAll}
+            className="px-3 py-1.5 rounded-lg bg-white border border-zinc-300 hover:bg-zinc-100 dark:bg-zinc-900 dark:border-zinc-700 dark:hover:bg-zinc-800 transition-colors"
+          >
             停止
           </button>
         )}
         {phase === 'finished' && (
-          <button onClick={startListening} className="px-3 py-1.5 rounded-lg bg-white border border-zinc-300 hover:bg-zinc-100 dark:bg-zinc-900 dark:border-zinc-700 dark:hover:bg-zinc-800 transition-colors">
+          <button
+            onClick={startListening}
+            className="px-3 py-1.5 rounded-lg bg-white border border-zinc-300 hover:bg-zinc-100 dark:bg-zinc-900 dark:border-zinc-700 dark:hover:bg-zinc-800 transition-colors"
+          >
             重做一遍
           </button>
         )}
@@ -250,28 +296,28 @@ export default function CetPlayer({ sentences, questions }: CetPlayerProps) {
         </label>
       </div>
 
-      {/* 进度 */}
-      {phase !== 'idle' && (
-        <div className="flex items-center gap-3 text-xs text-zinc-400 dark:text-zinc-500">
-          <span>
-            第 {Math.min(qIndex + 1, total)} / {total} 题
+      {/* 进度与成绩 */}
+      <div className="flex items-center gap-3 text-xs text-zinc-400 dark:text-zinc-500 flex-wrap">
+        <span>共 {total} 题</span>
+        <span>已答 {answeredCount}</span>
+        {phase !== 'idle' && <span>当前第 {Math.min(qIndex + 1, total)} 题</span>}
+        {phase === 'finished' && (
+          <span className="text-zinc-600 dark:text-zinc-300 font-medium">
+            正确 {correctCount} / {total}
           </span>
-          <span>已答 {answeredCount}</span>
-          {phase === 'finished' && (
-            <span className="text-zinc-600 dark:text-zinc-300 font-medium">
-              正确 {correctCount} / {total}
-            </span>
-          )}
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* 播放状态提示 */}
+      {/* 播放状态 */}
       {phase === 'dialogue' && (
-        <div className="text-sm text-zinc-500 dark:text-zinc-400 flex items-center gap-2">
+        <div className="text-sm text-zinc-500 dark:text-zinc-400 flex items-center gap-2 flex-wrap">
           <span className="inline-block w-2 h-2 rounded-full bg-sky-500 animate-pulse" />
           正在播放对话材料（第 {playingSeq + 1} 句）…
           {allowReplay && (
-            <button onClick={() => playSentence(0)} className="ml-2 px-2 py-0.5 rounded border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors">
+            <button
+              onClick={() => playSentence(0)}
+              className="px-2 py-0.5 rounded border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+            >
               重听
             </button>
           )}
@@ -284,103 +330,36 @@ export default function CetPlayer({ sentences, questions }: CetPlayerProps) {
         </div>
       )}
 
-      {/* 答题区：题干不在试卷上，只给选项 */}
-      {current && (phase === 'answering' || phase === 'answered' || phase === 'finished') && (
-        <div className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900 space-y-3">
-          <div className="flex items-center gap-3 flex-wrap">
-            <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">第 {qIndex + 1} 题</span>
-
-            {phase === 'answering' && (
-              <span className="text-xs text-amber-600 dark:text-amber-400">
-                剩余 {countdown} 秒
-              </span>
-            )}
-
-            <div className="ml-auto flex gap-2">
-              {!currentAnswered && (
-                <button
-                  onClick={() => toggleReveal(qIndex)}
-                  className="px-2 py-0.5 rounded text-xs border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-                >
-                  {revealedStem.has(qIndex) ? '收起题干' : '显示题干'}
-                </button>
-              )}
-              {current.stemAudioUrl ? (
-                <button
-                  onClick={replayStem}
-                  className="px-2 py-0.5 rounded text-xs border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-                  title="重听题干朗读"
-                >
-                  重听题干
-                </button>
-              ) : (
-                <span className="text-xs text-zinc-400 dark:text-zinc-500">题干音频未就绪</span>
-              )}
-            </div>
-          </div>
-
-          {(revealedStem.has(qIndex) || currentAnswered) && (
-            <div className="text-sm text-zinc-700 dark:text-zinc-300">
-              {current.stem}
-              {current.stemChinese && (
-                <span className="text-zinc-400 dark:text-zinc-500"> {current.stemChinese}</span>
-              )}
-            </div>
-          )}
-
-          <div className="space-y-1.5">
-            {current.options.map((opt, i) => {
-              const chosen = currentAnswered && answers[qIndex] === i
-              const isAnswer = currentAnswered && current.answerIndex === i
-              let cls = 'bg-white border-zinc-200 hover:bg-zinc-50 dark:bg-zinc-950 dark:border-zinc-800 dark:hover:bg-zinc-800'
-              if (isAnswer) {
-                cls = 'bg-emerald-50 border-emerald-400 dark:bg-emerald-950/40 dark:border-emerald-700'
-              } else if (chosen) {
-                cls = 'bg-red-50 border-red-400 dark:bg-red-950/40 dark:border-red-700'
-              }
-              return (
-                <button
-                  key={i}
-                  onClick={() => phase === 'answering' && pick(i)}
-                  disabled={phase !== 'answering'}
-                  className={`w-full text-left px-3 py-2 rounded-lg border text-sm transition-colors disabled:cursor-default flex items-start gap-2 ${cls}`}
-                >
-                  <span className="shrink-0 font-medium text-zinc-400 dark:text-zinc-500">
-                    {OPTION_LABELS[i] ?? i + 1}.
-                  </span>
-                  <span className="flex-1 text-zinc-800 dark:text-zinc-200">{opt}</span>
-                  {isAnswer && <span className="shrink-0 text-xs text-emerald-600 dark:text-emerald-400">正确答案</span>}
-                  {chosen && !isAnswer && <span className="shrink-0 text-xs text-red-500 dark:text-red-400">你的选择</span>}
-                </button>
-              )
-            })}
-          </div>
-
-          {currentAnswered && (
-            <div className="space-y-2 pt-1">
-              <div className="text-sm">
-                {isCorrect(answers[qIndex], current.answerIndex) ? (
-                  <span className="text-emerald-600 dark:text-emerald-400 font-medium">答对了 ✓</span>
-                ) : (
-                  <span className="text-red-500 dark:text-red-400 font-medium">
-                    答错了，正确答案是 {optionLabel(current.answerIndex)}
-                  </span>
-                )}
-              </div>
-              {current.explanation && (
-                <div className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">{current.explanation}</div>
-              )}
-              {phase === 'answered' && (
-                <button onClick={goNext} className="px-3 py-1.5 rounded-lg text-sm bg-zinc-900 text-zinc-50 font-medium hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300 transition-colors">
-                  {qIndex + 1 < total ? '下一题' : '查看结果'}
-                </button>
-              )}
-            </div>
-          )}
-        </div>
+      {phase === 'idle' && (
+        <p className="text-xs text-zinc-400 dark:text-zinc-500 leading-relaxed">
+          选项已全部列在下面（同真题：试卷上只有选项、没有问题，题干由录音读出）。
+          点「开始听力」按真题节奏做：先播对话，再逐题朗读题干并留 15 秒；也可以直接点选项作答。
+        </p>
       )}
 
-      {/* 成绩 */}
+      {/* 全部题目：选项始终可见 */}
+      <div className="space-y-3">
+        {questions.map((q, i) => (
+          <QuestionCard
+            key={q.id}
+            index={i}
+            question={q}
+            answer={answers[i]}
+            active={running && i === qIndex}
+            counting={phase === 'answering' && i === qIndex}
+            countdown={countdown}
+            revealStem={revealedStem.has(i)}
+            showNext={phase === 'answered' && i === qIndex}
+            isLast={i + 1 >= total}
+            onPick={(opt) => pick(i, opt)}
+            onToggleReveal={() => toggleReveal(i)}
+            onReplayStem={() => replayStem(i)}
+            onNext={goNext}
+          />
+        ))}
+      </div>
+
+      {/* 成绩明细 */}
       {phase === 'finished' && (
         <div className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
           <div className="text-sm text-zinc-900 dark:text-zinc-100 font-medium">
@@ -397,21 +376,149 @@ export default function CetPlayer({ sentences, questions }: CetPlayerProps) {
         </div>
       )}
 
-      {/* 原文与翻译：答题后默认展开，也支持单词本与逐句精听 */}
-      {(phase === 'finished' || phase === 'idle') && (
-        <div className="space-y-2">
-          <button
-            onClick={() => setShowTranscript((v) => !v)}
-            className="text-sm text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
+      {/* 原文与翻译（答完或手动展开） */}
+      <div className="space-y-2 border-t border-zinc-200 dark:border-zinc-800 pt-3">
+        <button
+          onClick={() => setShowTranscript((v) => !v)}
+          className="text-sm text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
+        >
+          {showTranscript ? '收起原文与翻译' : '查看原文与翻译（会揭露答案）'}
+        </button>
+        {showTranscript && <DialoguePlayer sentences={sentences} />}
+      </div>
+    </div>
+  )
+}
+
+interface QuestionCardProps {
+  index: number
+  question: QuestionView
+  answer: number | null | undefined
+  /** 是否为真题节奏中正在处理的那一题 */
+  active: boolean
+  counting: boolean
+  countdown: number
+  revealStem: boolean
+  showNext: boolean
+  isLast: boolean
+  onPick: (optionIndex: number) => void
+  onToggleReveal: () => void
+  onReplayStem: () => void
+  onNext: () => void
+}
+
+function QuestionCard({
+  index,
+  question,
+  answer,
+  active,
+  counting,
+  countdown,
+  revealStem,
+  showNext,
+  isLast,
+  onPick,
+  onToggleReveal,
+  onReplayStem,
+  onNext
+}: QuestionCardProps) {
+  const answered = isAnswered(answer)
+  const correct = isCorrect(answer, question.answerIndex)
+  const stemVisible = revealStem || answered
+
+  return (
+    <div
+      className={`rounded-xl border p-4 space-y-3 transition-colors ${
+        active
+          ? 'border-zinc-400 bg-zinc-100 dark:border-zinc-500 dark:bg-zinc-800'
+          : 'border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900'
+      }`}
+    >
+      <div className="flex items-center gap-3 flex-wrap">
+        <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">第 {index + 1} 题</span>
+        {counting && <span className="text-xs text-amber-600 dark:text-amber-400">剩余 {countdown} 秒</span>}
+        {answered && (
+          <span
+            className={`text-xs font-medium ${
+              correct ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500 dark:text-red-400'
+            }`}
           >
-            {showTranscript ? '收起原文与翻译' : '查看原文与翻译（会揭露答案）'}
-          </button>
+            {correct ? '答对 ✓' : `答错，正确答案 ${optionLabel(question.answerIndex)}`}
+          </span>
+        )}
+
+        <div className="ml-auto flex gap-2">
+          {!answered && (
+            <button
+              onClick={onToggleReveal}
+              className="px-2 py-0.5 rounded text-xs border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+            >
+              {stemVisible ? '收起题干' : '显示题干'}
+            </button>
+          )}
+          {question.stemAudioUrl ? (
+            <button
+              onClick={onReplayStem}
+              className="px-2 py-0.5 rounded text-xs border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+              title="重听题干朗读"
+            >
+              重听题干
+            </button>
+          ) : (
+            <span className="text-xs text-zinc-400 dark:text-zinc-500">题干音频未就绪</span>
+          )}
+        </div>
+      </div>
+
+      {stemVisible && (
+        <div className="text-sm text-zinc-700 dark:text-zinc-300">
+          {question.stem}
+          {question.stemChinese && (
+            <span className="text-zinc-400 dark:text-zinc-500"> {question.stemChinese}</span>
+          )}
         </div>
       )}
-      {showTranscript && (
-        <div className="border-t border-zinc-200 dark:border-zinc-800 pt-3">
-          <DialoguePlayer sentences={sentences} />
-        </div>
+
+      <div className="space-y-1.5">
+        {question.options.map((opt, i) => {
+          const chosen = answered && answer === i
+          const isAnswer = answered && question.answerIndex === i
+          let cls =
+            'bg-white border-zinc-200 hover:bg-zinc-50 dark:bg-zinc-950 dark:border-zinc-800 dark:hover:bg-zinc-800'
+          if (isAnswer) {
+            cls = 'bg-emerald-50 border-emerald-400 dark:bg-emerald-950/40 dark:border-emerald-700'
+          } else if (chosen) {
+            cls = 'bg-red-50 border-red-400 dark:bg-red-950/40 dark:border-red-700'
+          }
+          return (
+            <button
+              key={i}
+              onClick={() => onPick(i)}
+              disabled={answered}
+              className={`w-full text-left px-3 py-2 rounded-lg border text-sm transition-colors disabled:cursor-default flex items-start gap-2 ${cls}`}
+            >
+              <span className="shrink-0 font-medium text-zinc-400 dark:text-zinc-500">
+                {OPTION_LABELS[i] ?? i + 1}.
+              </span>
+              <span className="flex-1 text-zinc-800 dark:text-zinc-200">{opt}</span>
+              {isAnswer && <span className="shrink-0 text-xs text-emerald-600 dark:text-emerald-400">正确答案</span>}
+              {chosen && !isAnswer && <span className="shrink-0 text-xs text-red-500 dark:text-red-400">你的选择</span>}
+            </button>
+          )
+        })}
+      </div>
+
+      {answered && question.explanation && (
+        <div className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">{question.explanation}</div>
+      )}
+
+      {showNext && (
+        <button
+          onClick={onNext}
+          className="px-3 py-1.5 rounded-lg text-sm bg-zinc-900 text-zinc-50 font-medium hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300 transition-colors"
+        >
+          {isLast ? '查看结果' : '下一题'}
+        </button>
       )}
     </div>
   )
