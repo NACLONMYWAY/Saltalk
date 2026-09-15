@@ -1,5 +1,14 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { CEFRLevel, ConversationRecord, Dialogue, SentenceRecord, WordRecord } from '../../shared/types.ts'
+import type {
+  ConversationRecord,
+  Dialogue,
+  DifficultyId,
+  ExamSystem,
+  GenerateMode,
+  QuestionRecord,
+  SentenceRecord,
+  WordRecord
+} from '../../shared/types.ts'
 import type { WordStats } from '../../shared/stats.ts'
 
 export interface SentenceView extends SentenceRecord {
@@ -7,9 +16,20 @@ export interface SentenceView extends SentenceRecord {
   slowAudioUrl: string | null
 }
 
+export interface QuestionView extends QuestionRecord {
+  stemAudioUrl: string | null
+}
+
 export interface WordView extends WordRecord {
   wordAudioUrl: string | null
   exampleAudioUrl: string | null
+}
+
+export interface GenerateResult {
+  conversationId: string
+  system: ExamSystem
+  mode: GenerateMode
+  dialogue: Dialogue
 }
 
 const api = {
@@ -17,12 +37,18 @@ const api = {
   getConfig: (key: string): Promise<string | null> => ipcRenderer.invoke('config:get', key),
   setConfig: (key: string, value: string): Promise<void> => ipcRenderer.invoke('config:set', key, value),
 
+  // 难度体系与音色
+  setSystem: (system: ExamSystem): Promise<DifficultyId> => ipcRenderer.invoke('system:set', system),
+  setVoice: (slot: 'a' | 'b' | 'narrator', voiceId: string): Promise<void> =>
+    ipcRenderer.invoke('voice:set', slot, voiceId),
+  previewVoice: (voiceId: string): Promise<string> => ipcRenderer.invoke('voice:preview', voiceId),
+
   // dialogue
   generateDialogue: (
     topic: string,
-    level: CEFRLevel
-  ): Promise<{ conversationId: string; dialogue: Dialogue }> =>
-    ipcRenderer.invoke('dialogue:generate', topic, level),
+    system: ExamSystem,
+    level: DifficultyId
+  ): Promise<GenerateResult> => ipcRenderer.invoke('dialogue:generate', topic, system, level),
 
   // conversations
   listConversations: (): Promise<ConversationRecord[]> => ipcRenderer.invoke('conversation:list'),
@@ -31,6 +57,8 @@ const api = {
   deleteConversation: (id: string): Promise<void> => ipcRenderer.invoke('conversation:delete', id),
   listSentences: (conversationId: string): Promise<SentenceView[]> =>
     ipcRenderer.invoke('sentence:list', conversationId),
+  listQuestions: (conversationId: string): Promise<QuestionView[]> =>
+    ipcRenderer.invoke('question:list', conversationId),
 
   // tts
   synthesizeAll: (conversationId: string): Promise<void> =>

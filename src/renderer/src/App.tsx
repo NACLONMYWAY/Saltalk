@@ -17,7 +17,7 @@ type Theme = 'light' | 'dark'
 export default function App() {
   const tab = useAppStore((s) => s.tab)
   const setTab = useAppStore((s) => s.setTab)
-  const loadApiKey = useAppStore((s) => s.loadApiKey)
+  const loadSettings = useAppStore((s) => s.loadSettings)
 
   const [theme, setTheme] = useState<Theme>(() => {
     const saved = localStorage.getItem('theme')
@@ -25,8 +25,8 @@ export default function App() {
   })
 
   useEffect(() => {
-    loadApiKey()
-  }, [loadApiKey])
+    loadSettings()
+  }, [loadSettings])
 
   useLayoutEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark')

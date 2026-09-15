@@ -1,8 +1,11 @@
 import { create } from 'zustand'
 import { api } from './api.ts'
-import type { SentenceView, WordView } from '../../preload/index.ts'
-import type { CEFRLevel, Dialogue, WordRecord } from '../../../shared/types.ts'
+import type { QuestionView, SentenceView, WordView } from '../../preload/index.ts'
+import type { ConversationRecord, Dialogue, ExamSystem, WordRecord } from '../../../shared/types.ts'
 import type { WordStats } from '../../../shared/stats.ts'
+import { normalizeLevel } from '../../../shared/exams.ts'
+import { CONFIG_KEYS } from '../../../shared/configKeys.ts'
+import { DEFAULT_NARRATOR_VOICE, DEFAULT_VOICES, isKnownVoice } from '../../../shared/voices.ts'
 
 export type Tab = 'practice' | 'words' | 'history' | 'settings'
 
@@ -12,16 +15,18 @@ interface AppState {
 
   // practice
   topic: string
-  level: CEFRLevel
+  system: ExamSystem
+  level: string
   dialogue: Dialogue | null
   sentences: SentenceView[]
+  questions: QuestionView[]
   conversationId: string | null
   generating: boolean
   synthing: boolean
   error: string | null
   setTopic: (topic: string) => void
-  setLevel: (level: CEFRLevel) => void
-  generate: () => Promise<void>
+  setLevel: (level: string) => void
+  generate: () => Promise<boolean>
   pickRandomTopic: () => Promise<void>
   synthesize: () => Promise<void>
   loadConversation: (id: string) => Promise<void>
@@ -38,8 +43,17 @@ interface AppState {
 
   // settings
   apiKey: string
-  loadApiKey: () => Promise<void>
+  voiceA: string
+  voiceB: string
+  voiceNarrator: string
+  loadSettings: () => Promise<void>
   saveApiKey: (key: string) => Promise<void>
+  changeSystem: (system: ExamSystem) => Promise<void>
+  changeVoice: (slot: 'a' | 'b' | 'narrator', voiceId: string) => Promise<void>
+
+  // history
+  conversations: ConversationRecord[]
+  refreshConversations: () => Promise<void>
 }
 
 export const useAppStore = create<AppState>()((set, get) => ({
@@ -47,28 +61,37 @@ export const useAppStore = create<AppState>()((set, get) => ({
   setTab: (tab) => set({ tab }),
 
   topic: '',
+  system: 'cefr',
   level: 'B1',
   dialogue: null,
   sentences: [],
+  questions: [],
   conversationId: null,
   generating: false,
   synthing: false,
   error: null,
   setTopic: (topic) => set({ topic }),
-  setLevel: (level) => set({ level }),
+  setLevel: (level) => {
+    set({ level })
+    // 记住上次选择的等级，下次启动直接恢复
+    void api.setConfig(CONFIG_KEYS.level, level)
+  },
 
   generate: async () => {
-    const { topic } = get()
+    const { topic, system, level } = get()
     if (!topic.trim()) {
       set({ error: '请输入主题' })
-      return
+      return false
     }
-    set({ generating: true, error: null, sentences: [], conversationId: null, dialogue: null })
+    set({ generating: true, error: null, sentences: [], questions: [], conversationId: null, dialogue: null })
     try {
-      const result = await api.generateDialogue(topic.trim(), get().level)
-      set({ dialogue: result.dialogue, conversationId: result.conversationId })
+      const result = await api.generateDialogue(topic.trim(), system, level)
+      const questions = result.mode === 'exam' ? await api.listQuestions(result.conversationId) : []
+      set({ dialogue: result.dialogue, conversationId: result.conversationId, questions })
+      return true
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) })
+      return false
     } finally {
       set({ generating: false })
     }
@@ -85,8 +108,11 @@ export const useAppStore = create<AppState>()((set, get) => ({
     set({ synthing: true })
     try {
       await api.synthesizeAll(conversationId)
-      const sentences = await api.listSentences(conversationId)
-      set({ sentences })
+      const [sentences, questions] = await Promise.all([
+        api.listSentences(conversationId),
+        api.listQuestions(conversationId)
+      ])
+      set({ sentences, questions })
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) })
     } finally {
@@ -96,13 +122,15 @@ export const useAppStore = create<AppState>()((set, get) => ({
 
   loadConversation: async (id) => {
     const conv = await api.getConversation(id)
-    const sentences = await api.listSentences(id)
+    const [sentences, questions] = await Promise.all([api.listSentences(id), api.listQuestions(id)])
     if (conv) {
       set({
         conversationId: id,
         topic: conv.topic,
+        system: conv.system,
         level: conv.level,
         sentences,
+        questions,
         dialogue: null
       })
     }
@@ -141,12 +169,62 @@ export const useAppStore = create<AppState>()((set, get) => ({
   },
 
   apiKey: '',
-  loadApiKey: async () => {
-    const key = await api.getConfig('deepseek_api_key')
-    set({ apiKey: key ?? '' })
+  voiceA: DEFAULT_VOICES.cefr.a,
+  voiceB: DEFAULT_VOICES.cefr.b,
+  voiceNarrator: DEFAULT_NARRATOR_VOICE,
+
+  loadSettings: async () => {
+    const [systemRaw, levelRaw, voiceARaw, voiceBRaw, voiceNRaw, key] = await Promise.all([
+      api.getConfig(CONFIG_KEYS.system),
+      api.getConfig(CONFIG_KEYS.level),
+      api.getConfig(CONFIG_KEYS.voiceA),
+      api.getConfig(CONFIG_KEYS.voiceB),
+      api.getConfig(CONFIG_KEYS.voiceNarrator),
+      api.getConfig(CONFIG_KEYS.apiKey)
+    ])
+    const system: ExamSystem = systemRaw === 'ielts' || systemRaw === 'cet' ? systemRaw : 'cefr'
+    const def = DEFAULT_VOICES[system]
+    set({
+      system,
+      level: normalizeLevel(system, levelRaw),
+      voiceA: isKnownVoice(voiceARaw) ? (voiceARaw as string) : def.a,
+      voiceB: isKnownVoice(voiceBRaw) ? (voiceBRaw as string) : def.b,
+      voiceNarrator: isKnownVoice(voiceNRaw) ? (voiceNRaw as string) : DEFAULT_NARRATOR_VOICE,
+      apiKey: key ?? ''
+    })
   },
+
   saveApiKey: async (key) => {
-    await api.setConfig('deepseek_api_key', key)
+    await api.setConfig(CONFIG_KEYS.apiKey, key)
     set({ apiKey: key })
+  },
+
+  changeSystem: async (system) => {
+    const prev = get().system
+    const level = await api.setSystem(system)
+    set({ system, level })
+
+    // 若用户没有自定义过音色，则跟随体系切换默认搭配
+    // （CEFR/雅思：美音男女；四六级：美音 + 英音，贴近真题口音分布）
+    const prevDef = DEFAULT_VOICES[prev]
+    const nextDef = DEFAULT_VOICES[system]
+    const untouched = get().voiceA === prevDef.a && get().voiceB === prevDef.b
+    if (untouched && (nextDef.a !== prevDef.a || nextDef.b !== prevDef.b)) {
+      await api.setVoice('a', nextDef.a)
+      await api.setVoice('b', nextDef.b)
+      set({ voiceA: nextDef.a, voiceB: nextDef.b })
+    }
+  },
+
+  changeVoice: async (slot, voiceId) => {
+    await api.setVoice(slot, voiceId)
+    if (slot === 'a') set({ voiceA: voiceId })
+    else if (slot === 'b') set({ voiceB: voiceId })
+    else set({ voiceNarrator: voiceId })
+  },
+
+  conversations: [],
+  refreshConversations: async () => {
+    set({ conversations: await api.listConversations() })
   }
 }))

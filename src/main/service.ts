@@ -2,16 +2,32 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { AppDatabase } from './db.ts'
-import { generateDialogue, translateWord } from './deepseek.ts'
-import { synthesize, SPEAKER_VOICE, audioCacheKey, rateValue } from './tts.ts'
+import { generateDialogue, generateExamDialogue, translateWord } from './deepseek.ts'
+import { synthesize, audioCacheKey, questionCacheKey, rateValue } from './tts.ts'
 import { lookupWord } from './dictionary.ts'
+import { resolveNarratorVoice, resolveVoices } from './voiceConfig.ts'
+import { modeOf } from '../../shared/exams.ts'
+import { CONFIG_KEYS } from '../../shared/configKeys.ts'
 import { initialNextReview, reviewWord } from '../../shared/review.ts'
 import { computeWordStats, type WordStats } from '../../shared/stats.ts'
-import type { CEFRLevel, Dialogue, SentenceRecord, TtsStatus, WordRecord } from '../../shared/types.ts'
+import type {
+  Dialogue,
+  DifficultyId,
+  ExamSystem,
+  GenerateMode,
+  QuestionRecord,
+  SentenceRecord,
+  TtsStatus,
+  WordRecord
+} from '../../shared/types.ts'
 
 export interface GeneratedConversation {
   conversationId: string
+  system: ExamSystem
+  mode: GenerateMode
   dialogue: Dialogue
+  /** 仅四六级模式非空 */
+  questions: QuestionRecord[]
 }
 
 /** 清洗用户选中的词：去首尾标点与空白（保留词内撇号与连字符） */
@@ -30,55 +46,145 @@ export class AppService {
     this.fetcher = fetcher
   }
 
-  /** 生成对话并持久化，返回带 conversationId 的结果 */
-  async generateAndSave(topic: string, level: CEFRLevel, apiKey: string): Promise<GeneratedConversation> {
-    const dialogue = await generateDialogue({ apiKey, topic, level }, this.fetcher)
+  /**
+   * 生成并持久化。按难度体系分流：
+   * cefr / ielts → 双人对话；cet → 长对话 + 四选一选择题。
+   */
+  async generateAndSave(
+    topic: string,
+    system: ExamSystem,
+    level: DifficultyId,
+    apiKey: string
+  ): Promise<GeneratedConversation> {
+    const mode = modeOf(system)
+    const dialogue =
+      mode === 'exam'
+        ? await generateExamDialogue({ apiKey, topic, level, system }, this.fetcher)
+        : await generateDialogue({ apiKey, topic, level, system }, this.fetcher)
+
     const conversationId = randomUUID()
-    this.db.createConversation(conversationId, topic, level, dialogue.title, Date.now())
+    this.db.createConversation(conversationId, topic, system, level, dialogue.title, Date.now())
     dialogue.dialogue.forEach((line, seq) => {
       this.db.insertSentence(randomUUID(), conversationId, seq, line.speaker, line.english, line.chinese)
     })
-    return { conversationId, dialogue }
+
+    const questions: QuestionRecord[] = []
+    if (mode === 'exam' && dialogue.questions) {
+      dialogue.questions.forEach((q, seq) => {
+        const record: QuestionRecord = {
+          id: randomUUID(),
+          conversationId,
+          seq,
+          stem: q.stem,
+          stemChinese: q.stemChinese,
+          options: q.options,
+          answerIndex: q.answerIndex,
+          explanation: q.explanation,
+          stemAudioPath: null,
+          ttsStatus: 'pending'
+        }
+        this.db.insertQuestion(record)
+        questions.push(record)
+      })
+    }
+
+    return { conversationId, system, mode, dialogue, questions }
   }
 
   /** 合成一个对话全部句子的语音（正常 + 慢速两套）；单句失败标记 failed 不影响其他句 */
   async synthesizeAll(conversationId: string): Promise<void> {
-    const sentences = this.db.getSentences(conversationId)
-    for (const s of sentences) {
+    const conv = this.db.getConversation(conversationId)
+    const system = conv?.system ?? 'cefr'
+    const voices = resolveVoices(this.db)
+
+    for (const s of this.db.getSentences(conversationId)) {
+      const voice = voices[s.speaker]
       let normalPath: string | null = null
       let slowPath: string | null = null
       try {
-        normalPath = await this.synthesizeOne(conversationId, s, false)
+        normalPath = await this.synthesizeSentence(conversationId, s, voice, false)
       } catch {
         // 忽略单句失败
       }
       try {
-        slowPath = await this.synthesizeOne(conversationId, s, true)
+        slowPath = await this.synthesizeSentence(conversationId, s, voice, true)
       } catch {
         // 忽略单句失败
       }
       const status: TtsStatus = normalPath && slowPath ? 'done' : 'failed'
       this.db.updateSentenceAudio(s.id, normalPath, slowPath, status)
     }
+
+    // 四六级：题干要能被朗读出来（试卷上不印题干）
+    if (modeOf(system) === 'exam') {
+      const narrator = resolveNarratorVoice(this.db)
+      for (const q of this.db.getQuestions(conversationId)) {
+        try {
+          const path = await this.synthesizeStem(conversationId, q, narrator)
+          this.db.updateQuestionAudio(q.id, path, 'done')
+        } catch {
+          this.db.updateQuestionAudio(q.id, null, 'failed')
+        }
+      }
+    }
   }
 
-  private async synthesizeOne(
+  private async synthesizeSentence(
     conversationId: string,
     s: SentenceRecord,
+    voice: string,
     slow: boolean
   ): Promise<string> {
-    const fileName = audioCacheKey(conversationId, s.seq, s.speaker, slow)
+    const fileName = audioCacheKey(conversationId, s.seq, s.speaker, voice, slow)
     const targetPath = join(this.audioDir, fileName)
     // 缓存命中：文件已存在且非空，直接复用
     if (existsSync(targetPath) && statSync(targetPath).size > 0) {
       return targetPath
     }
-    const voice = SPEAKER_VOICE[s.speaker]
-    const rate = rateValue(slow)
-    return synthesize({ text: s.english, voice, rate, outDir: this.audioDir, fileName })
+    return synthesize({
+      text: s.english,
+      voice,
+      rate: rateValue(slow),
+      outDir: this.audioDir,
+      fileName
+    })
   }
 
-  /** 加入单词本：中文释义用 Deepseek，音标用英文词典，例句取来源句子英文 */
+  private async synthesizeStem(
+    conversationId: string,
+    q: QuestionRecord,
+    voice: string
+  ): Promise<string> {
+    const fileName = questionCacheKey(conversationId, q.seq, voice)
+    const targetPath = join(this.audioDir, fileName)
+    if (existsSync(targetPath) && statSync(targetPath).size > 0) {
+      return targetPath
+    }
+    return synthesize({
+      text: q.stem,
+      voice,
+      rate: rateValue(false),
+      outDir: this.audioDir,
+      fileName
+    })
+  }
+
+  /** 音色试听：合成一句固定文本，返回音频路径（同一音色复用缓存） */
+  async previewVoice(voiceId: string): Promise<string> {
+    const fileName = `preview_${voiceId.replace(/[^a-zA-Z0-9-]/g, '')}.mp3`
+    const targetPath = join(this.audioDir, fileName)
+    if (existsSync(targetPath) && statSync(targetPath).size > 0) {
+      return targetPath
+    }
+    return synthesize({
+      text: 'Hello, this is how I sound. Let us start practising English listening together.',
+      voice: voiceId,
+      rate: rateValue(false),
+      outDir: this.audioDir,
+      fileName
+    })
+  }
+
   /**
    * 加入单词本：先快速插入（含例句及翻译，无释义），后台异步补中文释义与音标。
    * 重复单词抛错。
@@ -137,7 +243,7 @@ export class AppService {
       // 词典不可用
     }
 
-    const apiKey = this.db.getConfig('deepseek_api_key')
+    const apiKey = this.db.getConfig(CONFIG_KEYS.apiKey)
     if (apiKey) {
       try {
         const zh = await translateWord(word, apiKey, this.fetcher)
@@ -153,7 +259,7 @@ export class AppService {
     try {
       const audioPath = await synthesize({
         text: word,
-        voice: SPEAKER_VOICE.B,
+        voice: resolveVoices(this.db).B,
         rate: rateValue(false),
         outDir: this.audioDir,
         fileName: `word_${word}.mp3`

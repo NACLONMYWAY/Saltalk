@@ -8,6 +8,9 @@ dist/
 # 工作记忆（本地开发环境）
 .workbuddy/
 
+# 文档转换专用虚拟环境
+.venv-html-to-docx/
+
 # 日志
 *.log
 npm-debug.log*

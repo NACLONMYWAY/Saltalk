@@ -3,6 +3,7 @@ import { join } from 'path'
 import { AppDatabase } from './db'
 import { AppService } from './service'
 import { registerIpc } from './ipc'
+import { CONFIG_KEYS } from '../../shared/configKeys'
 
 let db: AppDatabase
 let service: AppService
@@ -36,7 +37,7 @@ app.whenReady().then(() => {
 
   // 记录当前版本号，但不做任何数据清理：
   // 新装时数据库本就是空的；升级时应保留用户数据（单词本/历史/API key）
-  db.setConfig('app_version', app.getVersion())
+  db.setConfig(CONFIG_KEYS.appVersion, app.getVersion())
 
   service = new AppService(db, audioDir)
   registerIpc(db, service)

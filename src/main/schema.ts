@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS config (
 CREATE TABLE IF NOT EXISTS conversation (
   id         TEXT PRIMARY KEY,
   topic      TEXT NOT NULL,
+  system     TEXT NOT NULL DEFAULT 'cefr',
   level      TEXT NOT NULL,
   title      TEXT,
   created_at INTEGER NOT NULL
@@ -21,6 +22,20 @@ CREATE TABLE IF NOT EXISTS sentence (
   chinese         TEXT NOT NULL,
   audio_path      TEXT,
   slow_audio_path TEXT,
+  tts_status      TEXT DEFAULT 'pending'
+);
+
+-- 四六级听力选择题：题干不印在试卷上，由录音朗读
+CREATE TABLE IF NOT EXISTS question (
+  id              TEXT PRIMARY KEY,
+  conversation_id TEXT NOT NULL REFERENCES conversation(id) ON DELETE CASCADE,
+  seq             INTEGER NOT NULL,
+  stem            TEXT NOT NULL,
+  stem_chinese    TEXT DEFAULT '',
+  options         TEXT NOT NULL,
+  answer_index    INTEGER NOT NULL,
+  explanation     TEXT,
+  stem_audio_path TEXT,
   tts_status      TEXT DEFAULT 'pending'
 );
 
@@ -41,5 +56,6 @@ CREATE TABLE IF NOT EXISTS word (
 );
 
 CREATE INDEX IF NOT EXISTS idx_sentence_conversation ON sentence(conversation_id, seq);
+CREATE INDEX IF NOT EXISTS idx_question_conversation ON question(conversation_id, seq);
 CREATE INDEX IF NOT EXISTS idx_word_next_review ON word(next_review_at);
 `

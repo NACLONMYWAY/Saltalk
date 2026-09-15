@@ -12,6 +12,24 @@ const VALID_JSON = JSON.stringify({
   ]
 })
 
+function cetJson(questionCount = 4): string {
+  return JSON.stringify({
+    title: '图书馆借书',
+    level: 'CET4',
+    dialogue: [
+      { speaker: 'A', english: 'Excuse me, how long can I keep this book?', chinese: '请问这本书我能借多久？' },
+      { speaker: 'B', english: 'Two weeks, and you can renew it once online.', chinese: '两周，你还可以在线续借一次。' }
+    ],
+    questions: Array.from({ length: questionCount }, (_, i) => ({
+      stem: `What does the speaker say about question ${i + 1}?`,
+      stemChinese: `关于第 ${i + 1} 题说话人说了什么？`,
+      options: [`opt${i}-a`, `opt${i}-b`, `opt${i}-c`, `opt${i}-d`],
+      answerIndex: i % 4,
+      explanation: `依据对话第 ${i + 1} 句。`
+    }))
+  })
+}
+
 let db: AppDatabase
 let service: AppService
 
@@ -41,8 +59,8 @@ describe('normalizeWord', () => {
   })
 })
 
-describe('generateAndSave', () => {
-  it('生成对话并持久化到数据库', async () => {
+describe('generateAndSave - 对话模式（CEFR / 雅思）', () => {
+  it('生成对话并持久化，system 一并落库', async () => {
     const mockFetch = (async () =>
       ({
         ok: true,
@@ -50,9 +68,11 @@ describe('generateAndSave', () => {
       }) as unknown as Response) as typeof fetch
     const svc = new AppService(db, '/tmp/audio', mockFetch)
 
-    const result = await svc.generateAndSave('coffee', 'B1', 'sk-test')
+    const result = await svc.generateAndSave('coffee', 'cefr', 'B1', 'sk-test')
     assert.ok(result.conversationId)
+    assert.equal(result.mode, 'conversation')
     assert.equal(result.dialogue.dialogue.length, 2)
+    assert.deepEqual(result.questions, [])
 
     const sentences = db.getSentences(result.conversationId)
     assert.equal(sentences.length, 2)
@@ -61,7 +81,91 @@ describe('generateAndSave', () => {
 
     const conv = db.getConversation(result.conversationId)
     assert.equal(conv!.topic, 'coffee')
+    assert.equal(conv!.system, 'cefr')
     assert.equal(conv!.level, 'B1')
+  })
+
+  it('雅思体系使用雅思分档作为 level', async () => {
+    const mockFetch = (async () =>
+      ({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: VALID_JSON } }] })
+      }) as unknown as Response) as typeof fetch
+    const svc = new AppService(db, '/tmp/audio', mockFetch)
+
+    const result = await svc.generateAndSave('travel', 'ielts', '6.5', 'sk-test')
+    assert.equal(result.system, 'ielts')
+    assert.equal(result.mode, 'conversation')
+    assert.equal(db.getConversation(result.conversationId)!.level, '6.5')
+  })
+})
+
+describe('generateAndSave - 考试模式（四六级）', () => {
+  it('生成对话 + 4 道选择题并落库', async () => {
+    const mockFetch = (async () =>
+      ({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: cetJson(4) } }] })
+      }) as unknown as Response) as typeof fetch
+    const svc = new AppService(db, '/tmp/audio', mockFetch)
+
+    const result = await svc.generateAndSave('图书馆借书', 'cet', 'CET4', 'sk-test')
+    assert.equal(result.mode, 'exam')
+    assert.equal(result.system, 'cet')
+    assert.equal(result.questions.length, 4)
+    assert.equal(result.dialogue.questions!.length, 4)
+
+    const stored = db.getQuestions(result.conversationId)
+    assert.equal(stored.length, 4)
+    assert.equal(stored[0].seq, 0)
+    assert.equal(stored[3].seq, 3)
+    assert.deepEqual(stored[1].options, ['opt1-a', 'opt1-b', 'opt1-c', 'opt1-d'])
+    assert.equal(stored[1].answerIndex, 1)
+    assert.equal(stored[0].ttsStatus, 'pending')
+
+    assert.equal(db.getConversation(result.conversationId)!.system, 'cet')
+  })
+
+  it('题目数量不对时自动重试，重试仍不对则抛错', async () => {
+    let calls = 0
+    const mockFetch = (async () => {
+      calls++
+      return {
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: cetJson(3) } }] })
+      } as unknown as Response
+    }) as typeof fetch
+    const svc = new AppService(db, '/tmp/audio', mockFetch)
+
+    await assert.rejects(() => svc.generateAndSave('t', 'cet', 'CET4', 'sk'), /题目数量/)
+    assert.equal(calls, 2, '应当刚好重试一次')
+    assert.equal(db.listConversations().length, 0, '失败时不应写入任何对话')
+  })
+
+  it('选项重复时视为不合规', async () => {
+    const bad = JSON.stringify({
+      title: 't',
+      level: 'CET4',
+      dialogue: [
+        { speaker: 'A', english: 'a', chinese: '甲' },
+        { speaker: 'B', english: 'b', chinese: '乙' }
+      ],
+      questions: Array.from({ length: 4 }, () => ({
+        stem: 'What?',
+        stemChinese: '什么？',
+        options: ['same', 'same', 'x', 'y'],
+        answerIndex: 0,
+        explanation: null
+      }))
+    })
+    const mockFetch = (async () =>
+      ({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: bad } }] })
+      }) as unknown as Response) as typeof fetch
+    const svc = new AppService(db, '/tmp/audio', mockFetch)
+
+    await assert.rejects(() => svc.generateAndSave('t', 'cet', 'CET4', 'sk'), /重复/)
   })
 })
 

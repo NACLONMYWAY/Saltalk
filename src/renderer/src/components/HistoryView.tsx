@@ -1,36 +1,38 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api.ts'
-import type { ConversationRecord } from '../../../../shared/types.ts'
-import type { SentenceView } from '../../../preload/index.ts'
+import { useAppStore } from '../store.ts'
+import type { SentenceView, QuestionView } from '../../../preload/index.ts'
+import { SYSTEM_LABEL, levelDisplay, modeOf } from '../../../../shared/exams.ts'
 import DialoguePlayer from './DialoguePlayer.tsx'
+import CetPlayer from './CetPlayer.tsx'
 
 export default function HistoryView() {
-  const [conversations, setConversations] = useState<ConversationRecord[]>([])
+  const conversations = useAppStore((s) => s.conversations)
+  const refreshConversations = useAppStore((s) => s.refreshConversations)
   const [expandedId, setExpandedId] = useState<string | null>(null)
-  const [expandedSentences, setExpandedSentences] = useState<SentenceView[]>([])
-  const [loadingSentences, setLoadingSentences] = useState(false)
-
-  async function load(): Promise<void> {
-    setConversations(await api.listConversations())
-  }
+  const [sentences, setSentences] = useState<SentenceView[]>([])
+  const [questions, setQuestions] = useState<QuestionView[]>([])
+  const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    load()
-  }, [])
+    refreshConversations()
+  }, [refreshConversations])
 
   async function toggleExpand(id: string): Promise<void> {
     if (expandedId === id) {
       setExpandedId(null)
-      setExpandedSentences([])
+      setSentences([])
+      setQuestions([])
       return
     }
     setExpandedId(id)
-    setLoadingSentences(true)
+    setLoading(true)
     try {
-      const s = await api.listSentences(id)
-      setExpandedSentences(s)
+      const [s, q] = await Promise.all([api.listSentences(id), api.listQuestions(id)])
+      setSentences(s)
+      setQuestions(q)
     } finally {
-      setLoadingSentences(false)
+      setLoading(false)
     }
   }
 
@@ -38,9 +40,10 @@ export default function HistoryView() {
     await api.deleteConversation(id)
     if (expandedId === id) {
       setExpandedId(null)
-      setExpandedSentences([])
+      setSentences([])
+      setQuestions([])
     }
-    await load()
+    await refreshConversations()
   }
 
   return (
@@ -49,11 +52,21 @@ export default function HistoryView() {
         <div key={c.id} className="bg-white border border-zinc-200 rounded-xl overflow-hidden dark:bg-zinc-900 dark:border-zinc-800">
           <div className="flex items-center gap-2 p-3">
             <button onClick={() => toggleExpand(c.id)} className="flex-1 text-left hover:bg-zinc-100 dark:hover:bg-zinc-800/50 rounded p-1 -m-1 transition-colors">
-              <div className="flex items-center justify-between">
-                <span className="text-zinc-900 dark:text-zinc-100 font-medium">{c.topic}</span>
-                <span className="text-xs text-zinc-400 dark:text-zinc-500">{c.level}</span>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-zinc-900 dark:text-zinc-100 font-medium truncate">
+                  {c.title || c.topic}
+                </span>
+                <span className="shrink-0 flex items-center gap-1.5">
+                  <span className="px-1.5 py-0.5 rounded text-[11px] bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+                    {SYSTEM_LABEL[c.system]}
+                  </span>
+                  <span className="text-xs text-zinc-400 dark:text-zinc-500">
+                    {levelDisplay(c.system, c.level)}
+                  </span>
+                </span>
               </div>
-              <div className="text-sm text-zinc-400 dark:text-zinc-500 mt-1">
+              <div className="text-sm text-zinc-400 dark:text-zinc-500 mt-1 truncate">
+                {c.title ? `${c.topic} · ` : ''}
                 {new Date(c.createdAt).toLocaleString()}
               </div>
             </button>
@@ -68,10 +81,12 @@ export default function HistoryView() {
 
           {expandedId === c.id && (
             <div className="border-t border-zinc-200 dark:border-zinc-800 p-3">
-              {loadingSentences ? (
+              {loading ? (
                 <div className="text-zinc-400 dark:text-zinc-500 text-sm py-4 text-center">加载中…</div>
+              ) : modeOf(c.system) === 'exam' && questions.length > 0 ? (
+                <CetPlayer sentences={sentences} questions={questions} />
               ) : (
-                <DialoguePlayer sentences={expandedSentences} />
+                <DialoguePlayer sentences={sentences} />
               )}
             </div>
           )}

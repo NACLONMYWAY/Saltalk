@@ -167,31 +167,38 @@ interface StudyCardsProps {
 
 function StudyCards({ words, onClose }: StudyCardsProps) {
   const markWordMastered = useAppStore((s) => s.markWordMastered)
-  const [index, setIndex] = useState(0)
+  // 进入背单词时对单词列表做本地快照，避免标记"会背"后 store 刷新导致列表变短，
+  // 从而出现跳词、提前"背完"的问题
+  const [queue, setQueue] = useState<WordView[]>(words)
   const [revealed, setRevealed] = useState(false)
+  const busyRef = useRef(false)
 
-  const word = words[index]
-
-  function next(): void {
-    setRevealed(false)
-    if (index + 1 < words.length) {
-      setIndex(index + 1)
-    } else {
-      onClose()
-    }
-  }
+  const word = queue[0]
 
   async function handleResult(mastered: boolean): Promise<void> {
-    if (mastered) {
-      await markWordMastered(word.id, true)
+    const current = queue[0]
+    if (!current || busyRef.current) return
+    busyRef.current = true
+    try {
+      setRevealed(false)
+      // 从队头移除当前词；"还不会"的词移到队尾，稍后再次复习
+      setQueue((q) => {
+        const [, ...rest] = q
+        if (!mastered) rest.push(current)
+        return rest
+      })
+      if (mastered) {
+        await markWordMastered(current.id, true)
+      }
+    } finally {
+      busyRef.current = false
     }
-    next()
   }
 
   if (!word) {
     return (
       <div className="max-w-md mx-auto px-6 py-16 text-center text-zinc-500">
-        没有需要背的单词
+        全部背完，太棒了！
         <button onClick={onClose} className="block mx-auto mt-4 px-4 py-2 rounded-lg text-sm bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 transition-colors">
           返回
         </button>
@@ -203,7 +210,7 @@ function StudyCards({ words, onClose }: StudyCardsProps) {
     <div className="max-w-md mx-auto px-6 py-10 space-y-6">
       {/* 进度 */}
       <div className="text-center text-sm text-zinc-400 dark:text-zinc-500">
-        {index + 1} / {words.length}
+        还剩 {queue.length} 个单词
       </div>
 
       {/* 单词卡 */}
