@@ -162,6 +162,56 @@ describe('AppDatabase - question', () => {
   })
 })
 
+describe('AppDatabase - 全新安装必须是空库', () => {
+  it('首次创建的库不含任何用户数据（单词本/历史/题目/句子）', () => {
+    // 把「朋友装完拿到的是干净 APP」这个保证固化成测试：
+    // 任何人都不能往 schema 或启动流程里塞种子数据，否则这里会红
+    assert.equal(db.countConversations(), 0)
+    assert.equal(db.countSentences(), 0)
+    assert.equal(db.countQuestions(), 0)
+    assert.equal(db.countWords(), 0)
+    assert.deepEqual(db.listConversations(), [])
+    assert.deepEqual(db.listWords(), [])
+    assert.deepEqual(db.getDueWords(Date.now()), [])
+  })
+
+  it('首次创建的库不含 API Key，也不含任何配置项', () => {
+    assert.equal(db.getConfig('deepseek_api_key'), null)
+    assert.equal(db.getConfig('exam_system'), null)
+    assert.equal(db.getConfig('last_level'), null)
+    assert.equal(db.getConfig('voice_a'), null)
+    assert.equal(db.getConfig('voice_b'), null)
+    assert.equal(db.getConfig('voice_narrator'), null)
+  })
+
+  it('全新库的句子/题目查询返回空数组而不是报错', () => {
+    assert.deepEqual(db.getSentences('nope'), [])
+    assert.deepEqual(db.getQuestions('nope'), [])
+    assert.equal(db.getConversation('nope'), null)
+  })
+})
+
+describe('AppDatabase - 清空数据不会误伤配置', () => {
+  it('clearAllData 清掉内容但保留 API Key（刻意设计）', () => {
+    db.setConfig('deepseek_api_key', 'sk-keepme')
+    db.createConversation('c1', 't', 'cefr', 'A1', 'x', 1)
+    db.insertSentence('s1', 'c1', 0, 'A', 'Hi', '你好')
+    db.addWord(baseWord())
+
+    db.clearAllData()
+
+    assert.equal(db.countConversations(), 0)
+    assert.equal(db.countWords(), 0)
+    assert.equal(db.getConfig('deepseek_api_key'), 'sk-keepme', '清空数据不应清掉 API Key')
+  })
+
+  it('clearEverything 才会连配置一起清掉', () => {
+    db.setConfig('deepseek_api_key', 'sk-keepme')
+    db.clearEverything()
+    assert.equal(db.getConfig('deepseek_api_key'), null)
+  })
+})
+
 describe('AppDatabase - migration', () => {
   it('旧版库（无 system 列）升级后补列，且老记录一律视为 cefr', () => {
     const dir = mkdtempSync(join(tmpdir(), 'saltalk-migrate-'))
