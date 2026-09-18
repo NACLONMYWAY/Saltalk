@@ -27,6 +27,15 @@ export function questionCacheKey(conversationId: string, seq: number, voiceId: s
   return `q_${conversationId}_${seq}_${voiceFingerprint(voiceId)}.mp3`
 }
 
+/**
+ * 四六级引导语音频的缓存文件名。
+ * 文本只取决于题量（"Questions 1 to 4 are based on ..."），所以按题量缓存即可，
+ * 不同对话可共用同一个文件。
+ */
+export function introCacheKey(questionCount: number, voiceId: string): string {
+  return `intro_${questionCount}_${voiceFingerprint(voiceId)}.mp3`
+}
+
 /** 语速参数：慢速 -20%，正常 +0% */
 export function rateValue(slow: boolean): string {
   return slow ? '-20%' : '+0%'

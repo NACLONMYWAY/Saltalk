@@ -2,6 +2,7 @@ import { describe, it, beforeEach, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { AppDatabase } from '../../src/main/db.ts'
 import { AppService, normalizeWord } from '../../src/main/service.ts'
+import { cetJson as cetFixture } from './helpers/cetFixture.ts'
 
 const VALID_JSON = JSON.stringify({
   title: 'At the cafe',
@@ -12,22 +13,9 @@ const VALID_JSON = JSON.stringify({
   ]
 })
 
+/** 词数达标的四六级听力题（词数不足会被 parseCetResponse 拦下） */
 function cetJson(questionCount = 4): string {
-  return JSON.stringify({
-    title: '图书馆借书',
-    level: 'CET4',
-    dialogue: [
-      { speaker: 'A', english: 'Excuse me, how long can I keep this book?', chinese: '请问这本书我能借多久？' },
-      { speaker: 'B', english: 'Two weeks, and you can renew it once online.', chinese: '两周，你还可以在线续借一次。' }
-    ],
-    questions: Array.from({ length: questionCount }, (_, i) => ({
-      stem: `What does the speaker say about question ${i + 1}?`,
-      stemChinese: `关于第 ${i + 1} 题说话人说了什么？`,
-      options: [`opt${i}-a`, `opt${i}-b`, `opt${i}-c`, `opt${i}-d`],
-      answerIndex: i % 4,
-      explanation: `依据对话第 ${i + 1} 句。`
-    }))
-  })
+  return cetFixture({ questionCount })
 }
 
 let db: AppDatabase
@@ -119,7 +107,7 @@ describe('generateAndSave - 考试模式（四六级）', () => {
     assert.equal(stored.length, 4)
     assert.equal(stored[0].seq, 0)
     assert.equal(stored[3].seq, 3)
-    assert.deepEqual(stored[1].options, ['opt1-a', 'opt1-b', 'opt1-c', 'opt1-d'])
+    assert.deepEqual(stored[1].options, ['a1', 'b1', 'c1', 'd1'])
     assert.equal(stored[1].answerIndex, 1)
     assert.equal(stored[0].ttsStatus, 'pending')
 
@@ -143,21 +131,7 @@ describe('generateAndSave - 考试模式（四六级）', () => {
   })
 
   it('选项重复时视为不合规', async () => {
-    const bad = JSON.stringify({
-      title: 't',
-      level: 'CET4',
-      dialogue: [
-        { speaker: 'A', english: 'a', chinese: '甲' },
-        { speaker: 'B', english: 'b', chinese: '乙' }
-      ],
-      questions: Array.from({ length: 4 }, () => ({
-        stem: 'What?',
-        stemChinese: '什么？',
-        options: ['same', 'same', 'x', 'y'],
-        answerIndex: 0,
-        explanation: null
-      }))
-    })
+    const bad = cetFixture({ options: ['same', 'same', 'x', 'y'] })
     const mockFetch = (async () =>
       ({
         ok: true,
@@ -166,6 +140,19 @@ describe('generateAndSave - 考试模式（四六级）', () => {
     const svc = new AppService(db, '/tmp/audio', mockFetch)
 
     await assert.rejects(() => svc.generateAndSave('t', 'cet', 'CET4', 'sk'), /重复/)
+  })
+
+  it('对话词数不足时视为不合规（难度会偏低）', async () => {
+    const short = cetFixture({ minWords: 40 })
+    const mockFetch = (async () =>
+      ({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: short } }] })
+      }) as unknown as Response) as typeof fetch
+    const svc = new AppService(db, '/tmp/audio', mockFetch)
+
+    await assert.rejects(() => svc.generateAndSave('t', 'cet', 'CET4', 'sk'), /过短/)
+    assert.equal(db.listConversations().length, 0)
   })
 })
 

@@ -17,9 +17,11 @@ type Phase = ExamPhase
 interface CetPlayerProps {
   sentences: SentenceView[]
   questions: QuestionView[]
+  /** 引导语音频 URL（材料播放前播报）；可为 null，此时直接进对话 */
+  introUrl?: string | null
 }
 
-export default function CetPlayer({ sentences, questions }: CetPlayerProps) {
+export default function CetPlayer({ sentences, questions, introUrl = null }: CetPlayerProps) {
   const [phase, setPhase] = useState<Phase>('idle')
   const [qIndex, setQIndex] = useState(0)
   const [countdown, setCountdown] = useState(ANSWER_SECONDS)
@@ -32,11 +34,17 @@ export default function CetPlayer({ sentences, questions }: CetPlayerProps) {
 
   const dialogueAudioRef = useRef<HTMLAudioElement | null>(null)
   const stemAudioRef = useRef<HTMLAudioElement | null>(null)
+  const introAudioRef = useRef<HTMLAudioElement | null>(null)
   const sentencesRef = useRef<SentenceView[]>([])
   const questionsRef = useRef<QuestionView[]>([])
   const qIndexRef = useRef(0)
   const answersRef = useRef<Array<number | null>>([])
   const slowRef = useRef(false)
+  const introUrlRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    introUrlRef.current = introUrl
+  }, [introUrl])
 
   useEffect(() => {
     sentencesRef.current = sentences
@@ -68,13 +76,17 @@ export default function CetPlayer({ sentences, questions }: CetPlayerProps) {
   useEffect(() => {
     const dialogueAudio = new Audio()
     const stemAudio = new Audio()
+    const introAudio = new Audio()
     dialogueAudioRef.current = dialogueAudio
     stemAudioRef.current = stemAudio
+    introAudioRef.current = introAudio
     return () => {
       dialogueAudio.onended = null
       stemAudio.onended = null
+      introAudio.onended = null
       dialogueAudio.pause()
       stemAudio.pause()
+      introAudio.pause()
     }
   }, [])
 
@@ -121,6 +133,25 @@ export default function CetPlayer({ sentences, questions }: CetPlayerProps) {
     setQIndex(0)
     qIndexRef.current = 0
     setShowTranscript(false)
+    playIntro()
+  }
+
+  /** 真题流程：先播报引导语（"Questions 1 to 4 are based on ..."），再放对话 */
+  function playIntro(): void {
+    const audio = introAudioRef.current
+    const url = introUrlRef.current
+    if (!audio || !url) {
+      startDialogue()
+      return
+    }
+    setPhase('intro')
+    audio.pause()
+    audio.src = url
+    audio.onended = () => startDialogue()
+    audio.play().catch(() => startDialogue())
+  }
+
+  function startDialogue(): void {
     setPhase('dialogue')
     playSentence(0)
   }
@@ -187,6 +218,7 @@ export default function CetPlayer({ sentences, questions }: CetPlayerProps) {
   function finish(): void {
     dialogueAudioRef.current?.pause()
     stemAudioRef.current?.pause()
+    introAudioRef.current?.pause()
     setPlayingSeq(-1)
     setPhase('finished')
     setShowTranscript(true)
@@ -230,6 +262,7 @@ export default function CetPlayer({ sentences, questions }: CetPlayerProps) {
   function stopAll(): void {
     dialogueAudioRef.current?.pause()
     stemAudioRef.current?.pause()
+    introAudioRef.current?.pause()
     setPlayingSeq(-1)
     setPhase('idle')
   }
@@ -248,7 +281,8 @@ export default function CetPlayer({ sentences, questions }: CetPlayerProps) {
   const total = questions.length
   const answeredCount = answers.filter(isAnswered).length
   const correctCount = countCorrect(answers, questions)
-  const running = phase === 'dialogue' || phase === 'stem' || phase === 'answering' || phase === 'answered'
+  const running =
+    phase === 'intro' || phase === 'dialogue' || phase === 'stem' || phase === 'answering' || phase === 'answered'
 
   if (total === 0) {
     return (
@@ -309,6 +343,12 @@ export default function CetPlayer({ sentences, questions }: CetPlayerProps) {
       </div>
 
       {/* 播放状态 */}
+      {phase === 'intro' && (
+        <div className="text-sm text-zinc-500 dark:text-zinc-400 flex items-center gap-2">
+          <span className="inline-block w-2 h-2 rounded-full bg-sky-500 animate-pulse" />
+          正在播放考试说明…
+        </div>
+      )}
       {phase === 'dialogue' && (
         <div className="text-sm text-zinc-500 dark:text-zinc-400 flex items-center gap-2 flex-wrap">
           <span className="inline-block w-2 h-2 rounded-full bg-sky-500 animate-pulse" />
@@ -333,7 +373,8 @@ export default function CetPlayer({ sentences, questions }: CetPlayerProps) {
       {phase === 'idle' && (
         <p className="text-xs text-zinc-400 dark:text-zinc-500 leading-relaxed">
           选项已全部列在下面（同真题：试卷上只有选项、没有问题，题干由录音读出）。
-          点「开始听力」按真题节奏做：先播对话，再逐题朗读题干并留 15 秒；也可以直接点选项作答。
+          点「开始听力」按真题节奏走：先播考试说明 → 放对话 → 逐题朗读题干（带题号）并留 15 秒；
+          也可以直接点选项作答。
         </p>
       )}
 

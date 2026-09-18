@@ -12,7 +12,20 @@ export const ANSWER_SECONDS = 15
 /** 四选一的选项标号 */
 export const OPTION_LABELS = ['A', 'B', 'C', 'D']
 
-export type ExamPhase = 'idle' | 'dialogue' | 'stem' | 'answering' | 'answered' | 'finished'
+export type ExamPhase =
+  /** 未开始，可自由作答（选项已全部可见） */
+  | 'idle'
+  /** 播放引导语（"Questions 1 to 4 are based on the conversation you have just heard."） */
+  | 'intro'
+  /** 播放对话材料 */
+  | 'dialogue'
+  /** 朗读当前题题干 */
+  | 'stem'
+  /** 当前题答题窗口（15 秒倒计时） */
+  | 'answering'
+  /** 当前题已作答，倒计时暂停，等待「下一题」 */
+  | 'answered'
+  | 'finished'
 
 /**
  * 由当前题号推下一题题号；已经是最后一题时返回 null（表示本轮结束）。
@@ -61,4 +74,23 @@ export function countCorrect(
 export function optionLabel(index: number | null | undefined): string {
   if (!isAnswered(index)) return '?'
   return OPTION_LABELS[index as number] ?? '?'
+}
+
+/**
+ * 题干朗读文本：真题里播音员是**连着题号一起念**的。
+ * 取自真实考卷听力原文，形如：
+ *   "Question 1, what does the man say he did before buying the blender?"
+ * 所以这里不能只合成题干本身，否则听不出当前是第几题。
+ */
+export function spokenStem(index: number, stem: string): string {
+  return `Question ${index + 1}. ${stem.trim()}`
+}
+
+/**
+ * 真题在材料播放前会先播报一段引导语，之后才放对话：
+ *   "Questions 1 to 4 are based on the conversation you have just heard."
+ */
+export function examIntroText(questionCount: number): string {
+  const to = Math.max(1, questionCount)
+  return `Questions 1 to ${to} are based on the conversation you have just heard.`
 }

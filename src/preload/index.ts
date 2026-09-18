@@ -59,6 +59,9 @@ const api = {
     ipcRenderer.invoke('sentence:list', conversationId),
   listQuestions: (conversationId: string): Promise<QuestionView[]> =>
     ipcRenderer.invoke('question:list', conversationId),
+  /** 四六级引导语音频 URL（材料播放前播报），无题目或合成失败时为 null */
+  getExamIntro: (conversationId: string): Promise<string | null> =>
+    ipcRenderer.invoke('exam:intro', conversationId),
 
   // tts
   synthesizeAll: (conversationId: string): Promise<void> =>
@@ -87,7 +90,7 @@ const api = {
   getStats: (): Promise<WordStats> => ipcRenderer.invoke('stats:get'),
 
   // topic
-  randomTopic: (): Promise<string> => ipcRenderer.invoke('topic:random')
+  randomTopic: (system: ExamSystem): Promise<string> => ipcRenderer.invoke('topic:random', system)
 }
 
 contextBridge.exposeInMainWorld('api', api)

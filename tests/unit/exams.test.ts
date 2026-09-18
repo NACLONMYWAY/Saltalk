@@ -93,10 +93,31 @@ describe('四六级等级', () => {
   it('长对话规格与真题一致：四级 240–280 词 / 六级 280–320 词，均 4 题', () => {
     assert.deepEqual(CET_SPECS.CET4.words, [240, 280])
     assert.deepEqual(CET_SPECS.CET6.words, [280, 320])
-    assert.deepEqual(CET_SPECS.CET4.wpm, [120, 150])
+    assert.deepEqual(CET_SPECS.CET4.wpm, [120, 140])
     assert.deepEqual(CET_SPECS.CET6.wpm, [140, 160])
     assert.equal(CET_SPECS.CET4.questions, 4)
     assert.equal(CET_SPECS.CET6.questions, 4)
+  })
+
+  it('每档都写明词汇带、语域、答案策略与题型配比（决定生成难度的核心）', () => {
+    for (const spec of [CET_SPECS.CET4, CET_SPECS.CET6]) {
+      assert.ok(spec.vocab.length > 20, `${spec.label} 缺少词汇带说明`)
+      assert.ok(spec.register.length > 20, `${spec.label} 缺少语域说明`)
+      assert.ok(spec.answerStyle.length > 20, `${spec.label} 缺少答案与干扰项策略`)
+      assert.ok(spec.questionMix.length > 10, `${spec.label} 缺少题型配比`)
+      assert.ok(spec.summary.length > 10, `${spec.label} 缺少设置页摘要`)
+    }
+  })
+
+  it('六级难度定位高于四级（词汇量与同义替换要求）', () => {
+    // 四级「所听即所得」，六级需要同义替换与推理
+    assert.ok(CET_SPECS.CET4.answerStyle.includes('90%'))
+    assert.ok(CET_SPECS.CET6.answerStyle.includes('70%'))
+    assert.ok(CET_SPECS.CET6.answerStyle.includes('同义'))
+    // 六级明确要求熟词僻义
+    assert.ok(CET_SPECS.CET6.vocab.includes('熟词僻义'))
+    assert.ok(CET_SPECS.CET4.vocab.includes('4500'))
+    assert.ok(CET_SPECS.CET6.vocab.includes('5500'))
   })
 
   it('未知等级回落到四级规格', () => {

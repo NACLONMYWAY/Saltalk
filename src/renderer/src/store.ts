@@ -20,6 +20,8 @@ interface AppState {
   dialogue: Dialogue | null
   sentences: SentenceView[]
   questions: QuestionView[]
+  /** 四六级引导语音频（材料播放前播报），非四六级时为 null */
+  examIntroUrl: string | null
   conversationId: string | null
   generating: boolean
   synthing: boolean
@@ -66,6 +68,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
   dialogue: null,
   sentences: [],
   questions: [],
+  examIntroUrl: null,
   conversationId: null,
   generating: false,
   synthing: false,
@@ -83,11 +86,15 @@ export const useAppStore = create<AppState>()((set, get) => ({
       set({ error: '请输入主题' })
       return false
     }
-    set({ generating: true, error: null, sentences: [], questions: [], conversationId: null, dialogue: null })
+    set({ generating: true, error: null, sentences: [], questions: [], examIntroUrl: null, conversationId: null, dialogue: null })
     try {
       const result = await api.generateDialogue(topic.trim(), system, level)
-      const questions = result.mode === 'exam' ? await api.listQuestions(result.conversationId) : []
-      set({ dialogue: result.dialogue, conversationId: result.conversationId, questions })
+      const isExam = result.mode === 'exam'
+      const [questions, examIntroUrl] = await Promise.all([
+        isExam ? api.listQuestions(result.conversationId) : Promise.resolve([]),
+        isExam ? api.getExamIntro(result.conversationId) : Promise.resolve(null)
+      ])
+      set({ dialogue: result.dialogue, conversationId: result.conversationId, questions, examIntroUrl })
       return true
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) })
@@ -98,7 +105,9 @@ export const useAppStore = create<AppState>()((set, get) => ({
   },
 
   pickRandomTopic: async () => {
-    const t = await api.randomTopic()
+    // 主题库按体系区分：四六级的场景（选课/求职/租房/社会议题）与 CEFR 的日常场景不同，
+    // 用同一套题库会把四六级难度拉低
+    const t = await api.randomTopic(get().system)
     set({ topic: t })
   },
 
@@ -112,7 +121,8 @@ export const useAppStore = create<AppState>()((set, get) => ({
         api.listSentences(conversationId),
         api.listQuestions(conversationId)
       ])
-      set({ sentences, questions })
+      const examIntroUrl = questions.length > 0 ? await api.getExamIntro(conversationId) : null
+      set({ sentences, questions, examIntroUrl })
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) })
     } finally {
@@ -123,6 +133,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
   loadConversation: async (id) => {
     const conv = await api.getConversation(id)
     const [sentences, questions] = await Promise.all([api.listSentences(id), api.listQuestions(id)])
+    const examIntroUrl = questions.length > 0 ? await api.getExamIntro(id) : null
     if (conv) {
       set({
         conversationId: id,
@@ -131,6 +142,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
         level: conv.level,
         sentences,
         questions,
+        examIntroUrl,
         dialogue: null
       })
     }
@@ -210,6 +222,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
       level,
       sentences: [],
       questions: [],
+      examIntroUrl: null,
       dialogue: null,
       conversationId: null,
       error: null

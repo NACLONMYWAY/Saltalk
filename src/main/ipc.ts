@@ -115,6 +115,12 @@ export function registerIpc(db: AppDatabase, service: AppService): void {
     db.getQuestions(conversationId).map(toQuestionView)
   )
 
+  /** 四六级引导语音频（材料播放前先播报），返回可直接播放的文件 URL */
+  ipcMain.handle('exam:intro', async (_e, conversationId: string) => {
+    const introPath = await service.getExamIntroPath(conversationId)
+    return introPath ? pathToFileURL(introPath).href : null
+  })
+
   // ---------- tts ----------
   ipcMain.handle('tts:synthesizeAll', (_e, conversationId: string) =>
     service.synthesizeAll(conversationId)
@@ -143,5 +149,7 @@ export function registerIpc(db: AppDatabase, service: AppService): void {
   ipcMain.handle('stats:get', () => service.getWordStats())
 
   // ---------- topic ----------
-  ipcMain.handle('topic:random', () => randomTopic())
+  ipcMain.handle('topic:random', (_e, system: ExamSystem) =>
+    randomTopic(isExamSystem(system) ? system : 'cefr')
+  )
 }

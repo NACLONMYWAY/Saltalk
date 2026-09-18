@@ -4,10 +4,12 @@ import {
   ANSWER_SECONDS,
   OPTION_LABELS,
   countCorrect,
+  examIntroText,
   isAnswered,
   isCorrect,
   nextQuestionIndex,
-  optionLabel
+  optionLabel,
+  spokenStem
 } from '../../shared/examFlow.ts'
 
 describe('ANSWER_SECONDS', () => {
@@ -110,6 +112,37 @@ describe('countCorrect', () => {
 
   it('没有题目时得 0 分', () => {
     assert.equal(countCorrect([0, 1], []), 0)
+  })
+})
+
+describe('spokenStem', () => {
+  it('题干朗读文本带题号（真题里播音员连题号一起念）', () => {
+    assert.equal(
+      spokenStem(0, 'What does the man suggest the woman do?'),
+      'Question 1. What does the man suggest the woman do?'
+    )
+    assert.equal(spokenStem(3, 'Why does the woman prefer the bus?'), 'Question 4. Why does the woman prefer the bus?')
+  })
+
+  it('题号从 1 开始，不与数组下标混淆', () => {
+    assert.ok(spokenStem(0, 'x').startsWith('Question 1.'))
+    assert.ok(spokenStem(1, 'x').startsWith('Question 2.'))
+  })
+
+  it('题干首尾空白被清理，不会念出多余停顿', () => {
+    assert.equal(spokenStem(0, '  What time is it?  '), 'Question 1. What time is it?')
+  })
+})
+
+describe('examIntroText', () => {
+  it('与真题引导语一致', () => {
+    assert.equal(examIntroText(4), 'Questions 1 to 4 are based on the conversation you have just heard.')
+    assert.equal(examIntroText(8), 'Questions 1 to 8 are based on the conversation you have just heard.')
+  })
+
+  it('题量非法时兜底为 1，不会产出「1 to 0」这种病句', () => {
+    assert.ok(examIntroText(0).includes('Questions 1 to 1'))
+    assert.ok(examIntroText(-3).includes('Questions 1 to 1'))
   })
 })
 

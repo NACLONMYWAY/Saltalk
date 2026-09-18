@@ -175,6 +175,20 @@ function SentenceItem({ sentence, current, showChinese, onPlay, onToggleChinese 
   const words = sentence.english.split(' ')
   const hasAudio = Boolean(sentence.audioUrl || sentence.slowAudioUrl)
 
+  // 点击单词会浮出「加入单词本」，点到别处就该收起。
+  // 只在有选中词时挂监听，所以同时最多存在一个监听器。
+  // 单词本体与「加入单词本」按钮带 data-word-pick，点它们不算「点到别处」。
+  useEffect(() => {
+    if (!selectedWord) return
+    function onDocMouseDown(e: MouseEvent): void {
+      const el = e.target as HTMLElement | null
+      if (el && typeof el.closest === 'function' && el.closest('[data-word-pick]')) return
+      setSelectedWord(null)
+    }
+    document.addEventListener('mousedown', onDocMouseDown)
+    return () => document.removeEventListener('mousedown', onDocMouseDown)
+  }, [selectedWord])
+
   function pickWord(clean: string): void {
     setSelectedWord(clean)
     setAdded(false)
@@ -232,6 +246,7 @@ function SentenceItem({ sentence, current, showChinese, onPlay, onToggleChinese 
               return (
                 <span
                   key={i}
+                  data-word-pick
                   onClick={() => pickWord(clean)}
                   className={`cursor-pointer px-0.5 rounded transition-colors ${
                     selectedWord === clean
@@ -249,6 +264,7 @@ function SentenceItem({ sentence, current, showChinese, onPlay, onToggleChinese 
 
           {selectedWord && (
             <button
+              data-word-pick
               onClick={handleAddWord}
               className="mt-2 px-2 py-0.5 rounded bg-yellow-400 text-zinc-900 text-xs font-medium hover:bg-yellow-300 dark:bg-yellow-500 dark:hover:bg-yellow-400 transition-colors"
             >

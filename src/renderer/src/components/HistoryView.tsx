@@ -12,6 +12,7 @@ export default function HistoryView() {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [sentences, setSentences] = useState<SentenceView[]>([])
   const [questions, setQuestions] = useState<QuestionView[]>([])
+  const [introUrl, setIntroUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
@@ -23,6 +24,7 @@ export default function HistoryView() {
       setExpandedId(null)
       setSentences([])
       setQuestions([])
+      setIntroUrl(null)
       return
     }
     setExpandedId(id)
@@ -31,6 +33,7 @@ export default function HistoryView() {
       const [s, q] = await Promise.all([api.listSentences(id), api.listQuestions(id)])
       setSentences(s)
       setQuestions(q)
+      setIntroUrl(q.length > 0 ? await api.getExamIntro(id) : null)
     } finally {
       setLoading(false)
     }
@@ -42,6 +45,7 @@ export default function HistoryView() {
       setExpandedId(null)
       setSentences([])
       setQuestions([])
+      setIntroUrl(null)
     }
     await refreshConversations()
   }
@@ -84,7 +88,7 @@ export default function HistoryView() {
               {loading ? (
                 <div className="text-zinc-400 dark:text-zinc-500 text-sm py-4 text-center">加载中…</div>
               ) : modeOf(c.system) === 'exam' && questions.length > 0 ? (
-                <CetPlayer sentences={sentences} questions={questions} />
+                <CetPlayer sentences={sentences} questions={questions} introUrl={introUrl} />
               ) : (
                 <DialoguePlayer sentences={sentences} />
               )}

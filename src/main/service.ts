@@ -3,10 +3,11 @@ import { existsSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { AppDatabase } from './db.ts'
 import { generateDialogue, generateExamDialogue, translateWord } from './deepseek.ts'
-import { synthesize, audioCacheKey, questionCacheKey, rateValue } from './tts.ts'
+import { synthesize, audioCacheKey, questionCacheKey, introCacheKey, rateValue } from './tts.ts'
 import { lookupWord } from './dictionary.ts'
 import { resolveNarratorVoice, resolveVoices } from './voiceConfig.ts'
 import { modeOf } from '../../shared/exams.ts'
+import { examIntroText, spokenStem } from '../../shared/examFlow.ts'
 import { CONFIG_KEYS } from '../../shared/configKeys.ts'
 import { initialNextReview, reviewWord } from '../../shared/review.ts'
 import { computeWordStats, type WordStats } from '../../shared/stats.ts'
@@ -115,10 +116,16 @@ export class AppService {
       this.db.updateSentenceAudio(s.id, normalPath, slowPath, status)
     }
 
-    // 四六级：题干要能被朗读出来（试卷上不印题干）
+    // 四六级：题干要能被朗读出来（试卷上不印题干），并预热材料前的引导语
     if (modeOf(system) === 'exam') {
       const narrator = resolveNarratorVoice(this.db)
-      for (const q of this.db.getQuestions(conversationId)) {
+      const questions = this.db.getQuestions(conversationId)
+      try {
+        await this.synthesizeExamIntro(questions.length)
+      } catch {
+        // 引导语合成失败不影响答题
+      }
+      for (const q of questions) {
         try {
           const path = await this.synthesizeStem(conversationId, q, narrator)
           this.db.updateQuestionAudio(q.id, path, 'done')
@@ -161,12 +168,43 @@ export class AppService {
       return targetPath
     }
     return synthesize({
-      text: q.stem,
+      text: spokenStem(q.seq, q.stem),
       voice,
       rate: rateValue(false),
       outDir: this.audioDir,
       fileName
     })
+  }
+
+  /**
+   * 四六级引导语（材料播放前先播这一段）。
+   * 文本只取决于题量，因此按题量缓存、不同对话共用同一个音频文件。
+   */
+  async synthesizeExamIntro(questionCount: number): Promise<string> {
+    const voice = resolveNarratorVoice(this.db)
+    const fileName = introCacheKey(questionCount, voice)
+    const targetPath = join(this.audioDir, fileName)
+    if (existsSync(targetPath) && statSync(targetPath).size > 0) {
+      return targetPath
+    }
+    return synthesize({
+      text: examIntroText(questionCount),
+      voice,
+      rate: rateValue(false),
+      outDir: this.audioDir,
+      fileName
+    })
+  }
+
+  /** 取某对话的引导语音频路径（缓存优先）；无题目或合成失败时返回 null */
+  async getExamIntroPath(conversationId: string): Promise<string | null> {
+    const count = this.db.getQuestions(conversationId).length
+    if (count === 0) return null
+    try {
+      return await this.synthesizeExamIntro(count)
+    } catch {
+      return null
+    }
   }
 
   /** 音色试听：合成一句固定文本，返回音频路径（同一音色复用缓存） */

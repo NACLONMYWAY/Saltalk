@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { audioCacheKey, questionCacheKey, rateValue } from '../../src/main/tts.ts'
+import { audioCacheKey, introCacheKey, questionCacheKey, rateValue } from '../../src/main/tts.ts'
 
 const GUY = 'en-US-GuyNeural'
 
@@ -48,6 +48,25 @@ describe('questionCacheKey', () => {
 
   it('不会与句子音频混淆', () => {
     assert.notEqual(questionCacheKey('c1', 0, GUY), audioCacheKey('c1', 0, 'A', GUY))
+  })
+})
+
+describe('introCacheKey', () => {
+  it('引导语按题量+音色缓存，不同对话可共用同一个文件', () => {
+    const a = introCacheKey(4, 'en-US-AriaNeural')
+    const b = introCacheKey(4, 'en-US-AriaNeural')
+    assert.equal(a, b, '同样的题量与音色必须命中同一文件')
+    assert.match(a, /^intro_4_[a-z0-9]+\.mp3$/)
+  })
+
+  it('题量不同或音色不同则不共用', () => {
+    assert.notEqual(introCacheKey(4, GUY), introCacheKey(8, GUY))
+    assert.notEqual(introCacheKey(4, GUY), introCacheKey(4, 'en-US-AriaNeural'))
+  })
+
+  it('不与句子音频、题干音频混淆', () => {
+    assert.notEqual(introCacheKey(4, GUY), questionCacheKey('c1', 0, GUY))
+    assert.notEqual(introCacheKey(4, GUY), audioCacheKey('c1', 0, 'A', GUY))
   })
 })
 

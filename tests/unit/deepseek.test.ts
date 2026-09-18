@@ -4,6 +4,7 @@ import {
   OPTION_COUNT,
   buildCetPrompt,
   buildPrompt,
+  countEnglishWords,
   extractJson,
   generateDialogue,
   generateExamDialogue,
@@ -11,6 +12,7 @@ import {
   parseDialogueResponse,
   translateWord
 } from '../../src/main/deepseek.ts'
+import { cetDialogue, cetJson, countWords } from './helpers/cetFixture.ts'
 
 const VALID_JSON = JSON.stringify({
   title: 'At the cafe',
@@ -21,22 +23,9 @@ const VALID_JSON = JSON.stringify({
   ]
 })
 
+/** 词数达标的四六级听力题（词数不足会被新的校验拦下） */
 function cetPayload(questionCount = 4): string {
-  return JSON.stringify({
-    title: '图书馆借书',
-    level: 'CET4',
-    dialogue: [
-      { speaker: 'A', english: 'How long can I keep this book?', chinese: '这本书我能借多久？' },
-      { speaker: 'B', english: 'Two weeks, and you can renew once.', chinese: '两周，可以续借一次。' }
-    ],
-    questions: Array.from({ length: questionCount }, (_, i) => ({
-      stem: `What does the woman say about item ${i + 1}?`,
-      stemChinese: `女士关于第 ${i + 1} 项说了什么？`,
-      options: [`a${i}`, `b${i}`, `c${i}`, `d${i}`],
-      answerIndex: i % OPTION_COUNT,
-      explanation: `依据第 ${i + 1} 句。`
-    }))
-  })
+  return cetJson({ questionCount })
 }
 
 describe('buildPrompt（CEFR / 雅思对话）', () => {
@@ -146,6 +135,52 @@ describe('buildCetPrompt（四六级听力题）', () => {
     const p = buildCetPrompt('t', 'CET4')
     assert.ok(p.includes('出题顺序与对话推进顺序'))
   })
+
+  it('写入决定难度的四项：词汇带、语域、答案策略、题型配比', () => {
+    const p4 = buildCetPrompt('t', 'CET4')
+    assert.ok(p4.includes('4500'), '四级应写明大纲词汇量')
+    assert.ok(p4.includes('所听即所得'), '四级应写明「所听即所得」的答案策略')
+    assert.ok(p4.includes('细节题'), '四级应写明题型配比')
+
+    const p6 = buildCetPrompt('t', 'CET6')
+    assert.ok(p6.includes('5500'), '六级应写明大纲词汇量')
+    assert.ok(p6.includes('熟词僻义'), '六级应要求熟词僻义')
+    assert.ok(p6.includes('同义'), '六级应要求同义替换')
+    assert.ok(p6.includes('推理'), '六级应包含推理题要求')
+  })
+
+  it('关键回归：不再出现「不要写难」的表述', () => {
+    const p = buildCetPrompt('t', 'CET4')
+    assert.ok(
+      !p.includes('不要出现明显超纲的艰深词汇'),
+      '旧版这句会主动把难度拉低，是「难度严重不符」的主因之一'
+    )
+    assert.ok(p.includes('必须达到真题的真实难度'))
+  })
+
+  it('写入信号词与答案位置规律（真题定位依据）', () => {
+    const p = buildCetPrompt('t', 'CET6')
+    assert.ok(p.includes('however'), '应点明转折信号词')
+    assert.ok(p.includes('开头两个回合内'), '应点明第 1 题答案的位置规律')
+  })
+
+  it('要求复合句式与信息密度，避免通篇短句', () => {
+    const p = buildCetPrompt('t', 'CET4')
+    assert.ok(p.includes('复合结构'))
+    assert.ok(p.includes('不要通篇短句'))
+  })
+})
+
+describe('countEnglishWords', () => {
+  it('按空白切分并忽略纯标点片段', () => {
+    assert.equal(countEnglishWords([{ english: 'one two three' }]), 3)
+    assert.equal(countEnglishWords([{ english: 'one two three' }, { english: 'four five' }]), 5)
+    assert.equal(countEnglishWords([{ english: '— ... !' }]), 0)
+  })
+
+  it('多空格与首尾空白不影响计数', () => {
+    assert.equal(countEnglishWords([{ english: '  a   b  ' }]), 2)
+  })
 })
 
 describe('parseCetResponse', () => {
@@ -153,7 +188,7 @@ describe('parseCetResponse', () => {
     const d = parseCetResponse(cetPayload(4), 4, 'CET4')
     assert.equal(d.title, '图书馆借书')
     assert.equal(d.difficulty, 'CET4')
-    assert.equal(d.dialogue.length, 2)
+    assert.equal(d.dialogue.length, cetDialogue().length)
     assert.equal(d.questions!.length, 4)
     assert.deepEqual(d.questions![1].options, ['a1', 'b1', 'c1', 'd1'])
     assert.equal(d.questions![1].answerIndex, 1)
@@ -166,14 +201,31 @@ describe('parseCetResponse', () => {
   })
 
   it('缺少 questions 抛错', () => {
-    const bad = JSON.stringify({
+    const bad = JSON.stringify({ title: 't', dialogue: cetDialogue() })
+    assert.throws(() => parseCetResponse(bad, 4, 'CET4'), /questions/)
+  })
+
+  it('关键回归：对话词数不足时抛错（否则难度会明显偏低）', () => {
+    const tooShort = JSON.stringify({
       title: 't',
       dialogue: [
-        { speaker: 'A', english: 'a', chinese: '甲' },
-        { speaker: 'B', english: 'b', chinese: '乙' }
-      ]
+        { speaker: 'A', english: 'How long can I keep this book?', chinese: '这本书我能借多久？' },
+        { speaker: 'B', english: 'Two weeks.', chinese: '两周。' }
+      ],
+      questions: JSON.parse(cetPayload(4)).questions
     })
-    assert.throws(() => parseCetResponse(bad, 4, 'CET4'), /questions/)
+    assert.throws(() => parseCetResponse(tooShort, 4, 'CET4'), /过短/)
+  })
+
+  it('对话词数远超真题区间时抛错', () => {
+    const tooLong = cetJson({ minWords: 700 })
+    assert.throws(() => parseCetResponse(tooLong, 4, 'CET4'), /过长/)
+  })
+
+  it('词数刚好达标时不报错（边界）', () => {
+    const lines = cetDialogue(210)
+    assert.ok(countWords(lines) >= Math.floor(240 * 0.85), '夹具本身要达标')
+    assert.doesNotThrow(() => parseCetResponse(cetJson({ minWords: 210 }), 4, 'CET4'))
   })
 
   it('选项数量不是 4 个抛错', () => {

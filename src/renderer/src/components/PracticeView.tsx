@@ -9,6 +9,7 @@ export default function PracticeView() {
   const level = useAppStore((s) => s.level)
   const sentences = useAppStore((s) => s.sentences)
   const questions = useAppStore((s) => s.questions)
+  const examIntroUrl = useAppStore((s) => s.examIntroUrl)
   const generating = useAppStore((s) => s.generating)
   const synthing = useAppStore((s) => s.synthing)
   const error = useAppStore((s) => s.error)
@@ -63,7 +64,8 @@ export default function PracticeView() {
 
       {isExam && !hasContent && !busy && (
         <p className="text-xs text-zinc-400 dark:text-zinc-500">
-          四六级模式按真题形式生成：一段长对话 + 4 道四选一选择题。题干不会显示在屏幕上，由录音朗读。
+          四六级模式按真题形式生成：一段长对话 + 4 道四选一选择题。录音流程与真题一致 —
+          先播报考试说明，再放对话，最后逐题朗读题干（带题号）并留 15 秒作答；题干不显示在屏幕上。
         </p>
       )}
 
@@ -93,7 +95,7 @@ export default function PracticeView() {
 
       {hasContent &&
         (isExam && questions.length > 0 ? (
-          <CetPlayer sentences={sentences} questions={questions} />
+          <CetPlayer sentences={sentences} questions={questions} introUrl={examIntroUrl} />
         ) : (
           <DialoguePlayer sentences={sentences} />
         ))}
