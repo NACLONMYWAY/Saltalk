@@ -102,6 +102,36 @@ Saltalk —— 自用英语听力口语学习桌面应用（Electron）。输入
 - edge-tts 是网络服务，首次合成需联网；单句失败会标记「音频未就绪」，不影响其他句子
 - 音色变更只影响**新生成**的对话，已有对话保留原音色音频（刻意设计，避免重合成耗时）
 
+## 安全与隐私（分发前必看）
+
+**API Key 不会随安装包分发。** 2026-09-18 用**本机真实的 Key** 对全部交付物做过全量字节搜索验证：
+
+| 交付物 | 是否含真实 Key |
+|---|---|
+| `dist/Saltalk Setup 1.4.2.exe`（发给别人的就是这个） | **否**（0 命中） |
+| `dist/win-unpacked/Saltalk.exe` | 否 |
+| `dist/win-unpacked/resources/app.asar` | 否 |
+| `out/**` 全部构建产物 | 否 |
+| 源码 `src/`、`shared/`、`package.json` | 否 |
+
+- 验证方法带**阳性/阴性对照**：拿 Key 去搜 `app.db` 自身命中 1（证明搜法有效），搜
+  `package-lock.json` 命中 0（证明不会误报）
+- `win-unpacked/Saltalk.exe` 里出现的 21 个 `sk-` 串是 **Skia 图形引擎的内部标识符**
+  （`sk-box-image-repeat`、`sk-SampleMask-04357` 等），与 API Key 无关
+- 交付物内**不存在** `app.db` / `.db-wal` / `.env` / `.sqlite` 等任何数据文件（asar 内也没有）
+- 渲染层 `localStorage` 只存 `theme`，不存 Key
+
+**数据实际存放位置：`%APPDATA%\nacl-english-listening\`**（注意不是 `Saltalk`）
+
+- 原因：`app.getName()` 取的是 `package.json` 顶层的 `name`（`nacl-english-listening`），
+  `productName: "Saltalk"` 写在 `build` 字段下、**不是顶层字段**，所以不生效
+- 目录内含 `app.db`（Key、体系、音色、单词本、历史）、`audio/`（音频缓存）
+- ⚠️ **不要把 `%APPDATA%\nacl-english-listening\` 整个打包发给别人** —— 那会连 API Key、
+  单词本、历史一起发出去。别人装安装包得到的是**全新空库**，不需要任何清理
+- ⚠️ 同理，直接分享 `app.db`（比如想共享单词本）也会泄露 API Key
+- `clearAllData()`（设置页「清空所有数据」）**不会**清除 config，所以 Key 会保留 —— 这是刻意的，
+  但如果哪天想让 Key 也清掉，要另外加逻辑
+
 ## 数据迁移
 - v1.4.0 相对 v1.3.3 是**纯增量迁移**：新增 `conversation.system` 列与 `question` 表，老记录自动视为 CEFR
 - 单词本、对话历史、API Key **全部保留**，升级不清库
