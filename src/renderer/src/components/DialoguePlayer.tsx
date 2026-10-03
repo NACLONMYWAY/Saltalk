@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useAppStore } from '../store.ts'
-import type { SentenceView } from '../../../preload/index.ts'
+import { api } from '../api.ts'
+import type { SentenceView, WordPreviewView } from '../../../preload/index.ts'
 
 interface DialoguePlayerProps {
   sentences: SentenceView[]
@@ -110,39 +111,49 @@ export default function DialoguePlayer({ sentences }: DialoguePlayerProps) {
   }
 
   return (
-    <div className="space-y-3">
+    <div className="player">
       {/* 播放控制 */}
-      <div className="flex gap-2 items-center text-sm">
-        <button
-          onClick={playing ? stop : playAll}
-          className="px-3 py-1.5 rounded-lg bg-white border border-zinc-300 hover:bg-zinc-100 dark:bg-zinc-900 dark:border-zinc-700 dark:hover:bg-zinc-800 transition-colors"
-        >
+      <div className="player-bar">
+        <button onClick={playing ? stop : playAll} className="btn">
+          <svg className="i">
+            <use href={playing ? '#i-stop' : '#i-play'} />
+          </svg>
           {playing ? '停止' : '连续播放'}
         </button>
+
         <button
           onClick={toggleSlow}
-          className={`px-3 py-1.5 rounded-lg border transition-colors ${
-            slow
-              ? 'bg-zinc-900 text-zinc-50 border-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 dark:border-zinc-100'
-              : 'bg-white border-zinc-300 hover:bg-zinc-100 dark:bg-zinc-900 dark:border-zinc-700 dark:hover:bg-zinc-800'
-          }`}
+          aria-pressed={slow}
+          className="chip"
+          title="放慢语速朗读（换用慢速音频）"
         >
+          <span className="chip-dot" />
+          <svg className="i i-sm">
+            <use href="#i-speed" />
+          </svg>
           慢速
         </button>
+
         <button
           onClick={() => setLoop(!loop)}
-          className={`px-3 py-1.5 rounded-lg border transition-colors ${
-            loop
-              ? 'bg-zinc-900 text-zinc-50 border-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 dark:border-zinc-100'
-              : 'bg-white border-zinc-300 hover:bg-zinc-100 dark:bg-zinc-900 dark:border-zinc-700 dark:hover:bg-zinc-800'
-          }`}
+          aria-pressed={loop}
+          className="chip"
+          title="当前句循环播放"
         >
+          <span className="chip-dot" />
+          <svg className="i i-sm">
+            <use href="#i-loop" />
+          </svg>
           单句循环
         </button>
+
+        <span className="sent-count ml-auto">
+          共 <b>{sentences.length}</b> 句
+        </span>
       </div>
 
-      {/* 句子列表 */}
-      <div className="space-y-2">
+      {/* 句子列表：一整份带发丝线分隔，不再是各自带边框的小卡片 */}
+      <div className="sent-list">
         {sentences.map((s, seq) => (
           <SentenceItem
             key={s.id}
@@ -170,10 +181,27 @@ function SentenceItem({ sentence, current, showChinese, onPlay, onToggleChinese 
   const [selectedWord, setSelectedWord] = useState<string | null>(null)
   const [added, setAdded] = useState(false)
   const [addError, setAddError] = useState<string | null>(null)
+  const [preview, setPreview] = useState<WordPreviewView | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewError, setPreviewError] = useState<string | null>(null)
+  // 快速连点不同的词时，用序号丢弃过期响应 —— 否则先发的慢请求回来会把新词的释义盖掉
+  const previewSeqRef = useRef(0)
+  // 本句是否已经预取过：只在第一次点词时发一次批量请求
+  const prefetchedRef = useRef(false)
   const addWord = useAppStore((s) => s.addWord)
 
   const words = sentence.english.split(' ')
   const hasAudio = Boolean(sentence.audioUrl || sentence.slowAudioUrl)
+
+  /** 把句子里所有可点的词提出来（去掉标点），供预取用 */
+  function sentenceWords(): string[] {
+    return words.map((w) => w.replace(/[^a-zA-Z'-]/g, '')).filter(Boolean)
+  }
+
+  // 卸载后不再回写状态
+  useEffect(() => () => {
+    previewSeqRef.current++
+  }, [])
 
   // 点击单词会浮出「加入单词本」，点到别处就该收起。
   // 只在有选中词时挂监听，所以同时最多存在一个监听器。
@@ -189,10 +217,34 @@ function SentenceItem({ sentence, current, showChinese, onPlay, onToggleChinese 
     return () => document.removeEventListener('mousedown', onDocMouseDown)
   }, [selectedWord])
 
+  /** 点词：立刻选中并浮出动作条，同时把这个词的意思查出来展示 */
   function pickWord(clean: string): void {
     setSelectedWord(clean)
     setAdded(false)
     setAddError(null)
+    setPreview(null)
+    setPreviewError(null)
+
+    // 顺手把整句的词预取进缓存。用户点了一个不认识的词，大概率还会点第二个，
+    // 那一个就不用再等一次网络了。只发一次，失败也不打扰用户。
+    if (!prefetchedRef.current) {
+      prefetchedRef.current = true
+      void api.prefetchWords(sentenceWords()).catch(() => {})
+    }
+
+    const seq = ++previewSeqRef.current
+    setPreviewLoading(true)
+    api
+      .previewWord(clean)
+      .then((r) => {
+        if (seq === previewSeqRef.current) setPreview(r)
+      })
+      .catch((e: unknown) => {
+        if (seq === previewSeqRef.current) setPreviewError(e instanceof Error ? e.message : String(e))
+      })
+      .finally(() => {
+        if (seq === previewSeqRef.current) setPreviewLoading(false)
+      })
   }
 
   async function handleAddWord(): Promise<void> {
@@ -209,79 +261,112 @@ function SentenceItem({ sentence, current, showChinese, onPlay, onToggleChinese 
   }
 
   return (
-    <div
-      className={`rounded-xl p-3 border transition-colors ${
-        current
-          ? 'bg-zinc-100 border-zinc-400 dark:bg-zinc-800 dark:border-zinc-500'
-          : 'bg-white border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800'
-      }`}
-    >
-      <div className="flex items-start gap-3">
-        <span
-          className={`shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white ${
-            sentence.speaker === 'A' ? 'bg-sky-500' : 'bg-emerald-500'
-          }`}
-        >
-          {sentence.speaker}
-        </span>
+    <div className={`sent${current ? ' playing' : ''}`}>
+      {/* 纯黑白区分说话人：A 实心 / B 描边 */}
+      <span className={`badge ${sentence.speaker === 'A' ? 'badge-a' : 'badge-b'}`}>
+        {sentence.speaker}
+      </span>
 
+      <div className="sent-body">
+        <div className="en">
+          {words.map((w, i) => {
+            const clean = w.replace(/[^a-zA-Z'-]/g, '')
+            if (!clean) return null
+            return (
+              <span
+                key={i}
+                data-word-pick
+                onClick={() => pickWord(clean)}
+                className={`w${selectedWord === clean ? ' picked' : ''}`}
+              >
+                {w}
+              </span>
+            )
+          })}
+        </div>
+
+        {showChinese && <div className="zh">{sentence.chinese}</div>}
+
+        {selectedWord && (
+          <div className="pickbar">
+            <span className="pick-word">{selectedWord}</span>
+            {preview?.phonetic && <span className="pick-phon">{preview.phonetic}</span>}
+
+            {/* 点词就把意思摆出来，不用先加进单词本才知道它是什么 */}
+            {previewLoading && <span className="pick-mean pick-mean-wait">查询中…</span>}
+            {!previewLoading && previewError && (
+              <span className="pick-mean pick-mean-miss" title={previewError}>
+                释义获取失败
+              </span>
+            )}
+            {!previewLoading && !previewError && preview?.meaning && (
+              <span className="pick-mean">{preview.meaning}</span>
+            )}
+            {!previewLoading && !previewError && preview && !preview.meaning && (
+              <span className="pick-mean pick-mean-miss">未查到释义</span>
+            )}
+
+            {preview?.inBook ? (
+              <span className="pick-note">已在单词本</span>
+            ) : (
+              <button data-word-pick onClick={handleAddWord} className="btn btn-xs btn-primary">
+                <svg className="i i-xs">
+                  <use href="#i-plus" />
+                </svg>
+                加入单词本
+              </button>
+            )}
+          </div>
+        )}
+
+        {added && (
+          <div className="toast-inline mt-2">
+            <svg className="i i-sm">
+              <use href="#i-check" />
+            </svg>
+            已加入单词本
+          </div>
+        )}
+
+        {addError && (
+          <div className="note note-danger mt-2">
+            <svg className="i i-sm">
+              <use href="#i-alert" />
+            </svg>
+            <span>{addError}</span>
+          </div>
+        )}
+      </div>
+
+      <div className="sent-actions">
+        {current && (
+          <span className="eq" aria-hidden="true">
+            <i />
+            <i />
+            <i />
+          </span>
+        )}
         <button
           onClick={onPlay}
           disabled={!hasAudio}
-          className={`shrink-0 mt-0.5 text-base leading-none ${
-            hasAudio
-              ? 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-100'
-              : 'text-zinc-300 dark:text-zinc-700 cursor-not-allowed'
-          }`}
+          className="icon-btn"
           title={hasAudio ? '播放' : '音频未就绪'}
+          aria-label={hasAudio ? '播放这一句' : '音频未就绪'}
         >
-          ▶
+          <svg className="i">
+            <use href="#i-play" />
+          </svg>
         </button>
-
-        <div className="flex-1 min-w-0">
-          <div className="flex flex-wrap gap-x-1.5 gap-y-1 items-baseline leading-relaxed">
-            {words.map((w, i) => {
-              const clean = w.replace(/[^a-zA-Z'-]/g, '')
-              if (!clean) return null
-              return (
-                <span
-                  key={i}
-                  data-word-pick
-                  onClick={() => pickWord(clean)}
-                  className={`cursor-pointer px-0.5 rounded transition-colors ${
-                    selectedWord === clean
-                      ? 'bg-yellow-300/70 dark:bg-yellow-600/60'
-                      : 'hover:bg-zinc-200 dark:hover:bg-zinc-700'
-                  }`}
-                >
-                  {w}
-                </span>
-              )
-            })}
-          </div>
-
-          {showChinese && <div className="text-zinc-500 dark:text-zinc-400 text-sm mt-1">{sentence.chinese}</div>}
-
-          {selectedWord && (
-            <button
-              data-word-pick
-              onClick={handleAddWord}
-              className="mt-2 px-2 py-0.5 rounded bg-yellow-400 text-zinc-900 text-xs font-medium hover:bg-yellow-300 dark:bg-yellow-500 dark:hover:bg-yellow-400 transition-colors"
-            >
-              + 加入单词本「{selectedWord}」
-            </button>
-          )}
-
-          {added && <span className="ml-2 text-xs text-emerald-600 dark:text-emerald-400">已加入 ✓</span>}
-          {addError && <div className="mt-1 text-xs text-red-500 dark:text-red-400">{addError}</div>}
-        </div>
-
         <button
           onClick={onToggleChinese}
-          className="shrink-0 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 text-sm transition-colors"
+          className="icon-btn"
+          aria-pressed={showChinese}
           title="翻译"
+          aria-label="展开或收起中文翻译"
         >
-          译
+          <svg className="i">
+            <use href="#i-trs" />
+          </svg>
         </button>
       </div>
     </div>

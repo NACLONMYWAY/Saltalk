@@ -25,6 +25,14 @@ export interface WordView extends WordRecord {
   exampleAudioUrl: string | null
 }
 
+/** 点词预览：只给界面看一眼，不写库 */
+export interface WordPreviewView {
+  word: string
+  meaning: string | null
+  phonetic: string | null
+  inBook: boolean
+}
+
 export interface GenerateResult {
   conversationId: string
   system: ExamSystem
@@ -79,12 +87,19 @@ const api = {
   ): Promise<WordRecord> =>
     ipcRenderer.invoke('word:add', rawWord, sourceSentenceId, example, exampleTranslation),
   listWords: (): Promise<WordView[]> => ipcRenderer.invoke('word:list'),
+  /** 点词预览：拿到这个词的意思（不落库） */
+  previewWord: (rawWord: string): Promise<WordPreviewView> => ipcRenderer.invoke('word:preview', rawWord),
+  /** 预取一批词的释义进缓存（不落库），让之后点词瞬时出结果 */
+  prefetchWords: (rawWords: string[]): Promise<number> => ipcRenderer.invoke('word:prefetch', rawWords),
   getDueWords: (): Promise<WordRecord[]> => ipcRenderer.invoke('word:due'),
   deleteWord: (id: string): Promise<void> => ipcRenderer.invoke('word:delete', id),
   markWordMastered: (id: string, mastered: boolean): Promise<void> =>
     ipcRenderer.invoke('word:markMastered', id, mastered),
   reviewWord: (id: string, remembered: boolean): Promise<void> =>
     ipcRenderer.invoke('word:review', id, remembered),
+  /** 补齐释义为空的单词，返回补齐条数 */
+  enrichMissingWords: (limit?: number): Promise<number> =>
+    ipcRenderer.invoke('word:enrichMissing', limit),
 
   // stats
   getStats: (): Promise<WordStats> => ipcRenderer.invoke('stats:get'),

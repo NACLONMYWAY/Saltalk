@@ -1,18 +1,9 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import { useAppStore } from '../store.ts'
 import { api } from '../api.ts'
 import { EXAM_SYSTEMS, SYSTEM_HINT, SYSTEM_LABEL, levelOption, levelsOf } from '../../../../shared/exams.ts'
 import { voicesByAccent } from '../../../../shared/voices.ts'
 import type { ExamSystem } from '../../../../shared/types.ts'
-
-const inputClass =
-  'bg-white border border-zinc-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-zinc-400 dark:bg-zinc-900 dark:border-zinc-700 dark:focus:border-zinc-500 transition-colors'
-
-const primaryBtn =
-  'px-4 py-2 rounded-lg text-sm bg-zinc-900 text-zinc-50 font-medium hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300 transition-colors'
-
-const ghostBtn =
-  'px-3 py-1.5 rounded-lg text-sm bg-white border border-zinc-300 hover:bg-zinc-100 dark:bg-zinc-900 dark:border-zinc-700 dark:hover:bg-zinc-800 transition-colors'
 
 export default function SettingsView() {
   const system = useAppStore((s) => s.system)
@@ -85,52 +76,76 @@ export default function SettingsView() {
   }
 
   return (
-    <div className="max-w-xl mx-auto px-6 py-6 space-y-7">
-      <h2 className="text-lg font-semibold">设置</h2>
+    <div className="wrap wrap-mid">
+      <div>
+        <h2 className="page-title">设置</h2>
+        <p className="page-sub">所有配置只保存在本机，不会随安装包分发。</p>
+      </div>
 
-      {error && <div className="text-sm text-red-500 dark:text-red-400">{error}</div>}
-
-      {/* 难度体系 */}
-      <section className="space-y-2">
-        <label className="text-sm text-zinc-500 dark:text-zinc-400">难度体系</label>
-        <div className="flex gap-2">
-          {EXAM_SYSTEMS.map((s) => (
-            <button
-              key={s}
-              onClick={() => handleSystem(s)}
-              className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${
-                system === s
-                  ? 'bg-zinc-900 text-zinc-50 border-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 dark:border-zinc-100'
-                  : 'bg-white border-zinc-300 hover:bg-zinc-100 dark:bg-zinc-900 dark:border-zinc-700 dark:hover:bg-zinc-800'
-              }`}
-            >
-              {SYSTEM_LABEL[s]}
-            </button>
-          ))}
+      {error && (
+        <div className="note note-danger">
+          <svg className="i">
+            <use href="#i-alert" />
+          </svg>
+          <span>{error}</span>
         </div>
-        <p className="text-xs text-zinc-400 dark:text-zinc-500">{SYSTEM_HINT[system]}</p>
+      )}
+
+      {/* 难度 */}
+      <section className="grp-card">
+        <div className="set-head">
+          <svg className="i i-sm">
+            <use href="#i-sliders" />
+          </svg>
+          <span className="sect-title">难度</span>
+        </div>
+
+        <div className="set-row">
+          <span className="set-label">难度体系</span>
+          <span className="set-ctrl">
+            <div className="seg" role="tablist" aria-label="难度体系">
+              {EXAM_SYSTEMS.map((s) => (
+                <button
+                  key={s}
+                  role="tab"
+                  aria-selected={system === s}
+                  onClick={() => handleSystem(s)}
+                  className="seg-btn"
+                >
+                  {SYSTEM_LABEL[s]}
+                </button>
+              ))}
+            </div>
+          </span>
+        </div>
+
+        <div className="set-row">
+          <span className="set-label">默认难度</span>
+          <span className="set-ctrl">
+            <SelectBox value={level} onChange={setLevel}>
+              {levels.map((opt) => (
+                <option key={opt.id} value={opt.id}>
+                  {system === 'cet' ? opt.label : `${SYSTEM_LABEL[system]} ${opt.label}`}
+                </option>
+              ))}
+            </SelectBox>
+          </span>
+        </div>
+
+        <div className="set-row stack">
+          <span className="set-hint">{SYSTEM_HINT[system]}</span>
+          {currentLevel && <span className="set-hint">{currentLevel.desc}</span>}
+        </div>
       </section>
 
-      {/* 默认难度 */}
-      <section className="space-y-2">
-        <label className="text-sm text-zinc-500 dark:text-zinc-400">默认难度</label>
-        <select
-          value={level}
-          onChange={(e) => setLevel(e.target.value)}
-          className={`w-full ${inputClass}`}
-        >
-          {levels.map((opt) => (
-            <option key={opt.id} value={opt.id}>
-              {system === 'cet' ? opt.label : `${SYSTEM_LABEL[system]} ${opt.label}`}
-            </option>
-          ))}
-        </select>
-        {currentLevel && <p className="text-xs text-zinc-400 dark:text-zinc-500">{currentLevel.desc}</p>}
-      </section>
-
-      {/* 音色配置 */}
-      <section className="space-y-3 border-t border-zinc-200 dark:border-zinc-800 pt-5">
-        <h3 className="text-sm text-zinc-700 dark:text-zinc-300">音色</h3>
+      {/* 音色 */}
+      <section className="grp-card">
+        <div className="set-head">
+          <svg className="i i-sm">
+            <use href="#i-vol" />
+          </svg>
+          <span className="sect-title">音色</span>
+        </div>
 
         <VoicePicker
           label="角色 A 音色"
@@ -151,7 +166,7 @@ export default function SettingsView() {
 
         {system === 'cet' && (
           <VoicePicker
-            label="题干朗读音色（四六级）"
+            label="题干朗读音色"
             value={voiceNarrator}
             excluded={[]}
             previewing={previewing === voiceNarrator}
@@ -160,57 +175,104 @@ export default function SettingsView() {
           />
         )}
 
-        <p className="text-xs text-zinc-400 dark:text-zinc-500 leading-relaxed">
-          音色变更只影响<span className="font-medium text-zinc-500 dark:text-zinc-400">新生成</span>的对话；
-          已生成的对话保留其原有音频，不会串音。
-          {system === 'cet' && ' 四六级模式下题干由指定的朗读音色念出，选项不朗读（与真题一致）。'}
-        </p>
+        <div className="set-row stack">
+          <span className="set-hint">
+            音色变更只影响<b className="hl">新生成</b>的对话；已生成的对话保留其原有音频，不会串音。
+            {system === 'cet' && ' 四六级模式下题干由指定的朗读音色念出，选项不朗读（与真题一致）。'}
+          </span>
+        </div>
       </section>
 
       {/* API Key */}
-      <section className="space-y-2 border-t border-zinc-200 dark:border-zinc-800 pt-5">
-        <label className="text-sm text-zinc-500 dark:text-zinc-400">Deepseek API Key</label>
-        <input
-          type="password"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder="sk-..."
-          className={`w-full ${inputClass}`}
-        />
-        <p className="text-xs text-zinc-400 dark:text-zinc-500">Key 仅保存在本机，用于生成对话与题目。</p>
-        <button onClick={handleSaveKey} className={primaryBtn}>
-          {saved ? '已保存' : '保存'}
-        </button>
+      <section className="grp-card">
+        <div className="set-head">
+          <svg className="i i-sm">
+            <use href="#i-lock" />
+          </svg>
+          <span className="sect-title">Deepseek API Key</span>
+        </div>
+
+        <div className="set-row">
+          <span className="set-label">API Key</span>
+          <span className="set-ctrl">
+            <input
+              type="password"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              placeholder="sk-..."
+              className="input"
+            />
+            <button onClick={handleSaveKey} className="btn btn-primary shrink-0">
+              {saved ? '已保存' : '保存'}
+            </button>
+          </span>
+        </div>
+
+        <div className="set-row stack">
+          <span className="set-hint">Key 仅保存在本机，用于生成对话与题目。</span>
+        </div>
       </section>
 
       {/* 数据管理 */}
-      <section className="border-t border-zinc-200 dark:border-zinc-800 pt-5 space-y-2">
-        <h3 className="text-sm text-zinc-700 dark:text-zinc-300">数据管理</h3>
-        {confirmClear ? (
-          <div className="flex gap-2 items-center flex-wrap">
-            <span className="text-sm text-zinc-500 dark:text-zinc-400">
-              确定清空所有对话、题目和单词本数据？此操作不可恢复。
-            </span>
-            <button
-              onClick={handleClearAll}
-              className="px-3 py-1.5 rounded-lg text-sm bg-red-500 hover:bg-red-400 text-white font-medium transition-colors"
-            >
-              确认清空
+      <section className="grp-card">
+        <div className="set-head">
+          <svg className="i i-sm">
+            <use href="#i-trash" />
+          </svg>
+          <span className="sect-title">数据管理</span>
+        </div>
+
+        <div className="set-row stack">
+          {confirmClear ? (
+            <>
+              <span className="set-hint">
+                确定清空所有对话、题目和单词本数据？此操作不可恢复。
+              </span>
+              <div className="flex gap-2 flex-wrap">
+                <button onClick={handleClearAll} className="btn btn-sm btn-danger-ghost">
+                  <svg className="i i-sm">
+                    <use href="#i-trash" />
+                  </svg>
+                  确认清空
+                </button>
+                <button onClick={() => setConfirmClear(false)} className="btn btn-sm">
+                  取消
+                </button>
+              </div>
+            </>
+          ) : (
+            <button onClick={() => setConfirmClear(true)} className="btn btn-sm self-start">
+              <svg className="i i-sm">
+                <use href="#i-trash" />
+              </svg>
+              清空所有数据
             </button>
-            <button onClick={() => setConfirmClear(false)} className={ghostBtn}>
-              取消
-            </button>
-          </div>
-        ) : (
-          <button
-            onClick={() => setConfirmClear(true)}
-            className="px-3 py-1.5 rounded-lg text-sm bg-zinc-100 hover:bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:hover:bg-zinc-700 dark:text-zinc-300 transition-colors"
-          >
-            清空所有数据
-          </button>
-        )}
+          )}
+        </div>
       </section>
     </div>
+  )
+}
+
+/** 原生 select 的统一外皮：保留原生下拉行为，只统一外观 */
+function SelectBox({
+  value,
+  onChange,
+  children
+}: {
+  value: string
+  onChange: (v: string) => void
+  children: ReactNode
+}) {
+  return (
+    <span className="sel">
+      <select value={value} onChange={(e) => onChange(e.target.value)} className="input">
+        {children}
+      </select>
+      <svg className="i i-sm sel-chev">
+        <use href="#i-chev" />
+      </svg>
+    </span>
   )
 }
 
@@ -227,14 +289,10 @@ interface VoicePickerProps {
 function VoicePicker({ label, value, excluded, previewing, onChange, onPreview }: VoicePickerProps) {
   const groups = voicesByAccent()
   return (
-    <div className="space-y-1">
-      <label className="text-sm text-zinc-500 dark:text-zinc-400">{label}</label>
-      <div className="flex gap-2">
-        <select
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className={`flex-1 min-w-0 ${inputClass}`}
-        >
+    <div className="set-row">
+      <span className="set-label">{label}</span>
+      <span className="set-ctrl">
+        <SelectBox value={value} onChange={onChange}>
           {groups.map((g) => (
             <optgroup key={g.accent} label={g.label}>
               {g.voices.map((v) => (
@@ -244,11 +302,11 @@ function VoicePicker({ label, value, excluded, previewing, onChange, onPreview }
               ))}
             </optgroup>
           ))}
-        </select>
-        <button onClick={onPreview} disabled={previewing} className={`shrink-0 ${ghostBtn} disabled:opacity-50`}>
+        </SelectBox>
+        <button onClick={onPreview} disabled={previewing} className="btn shrink-0">
           {previewing ? '合成中…' : '试听'}
         </button>
-      </div>
+      </span>
     </div>
   )
 }

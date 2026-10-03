@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="zh-CN" class="light">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Saltalk 纯黑白 UI 改版 · 验收图册</title>
+<style>
+  :root{
+    --bg:#fafaf9; --surface:#fff; --surface-2:#f4f4f5; --line:#e6e6e9; --line-2:#d6d6db;
+    --text-1:#151518; --text-2:#55555e; --text-3:#94949e; --ink:#151518; --on-ink:#fafafa;
+    --ok:#1d6b4c; --ok-wash:#edf6f1; --warn:#8a5a12; --warn-wash:#faf3e6;
+    --bad:#a3301f;
+  }
+  html.dark{
+    --bg:#08080a; --surface:#0f0f12; --surface-2:#17171b; --line:#232329; --line-2:#33333c;
+    --text-1:#f4f4f6; --text-2:#a3a3ad; --text-3:#6d6d77; --ink:#f4f4f6; --on-ink:#0b0b0d;
+    --ok:#63c194; --ok-wash:#0c1d16; --warn:#d2a155; --warn-wash:#1d1608;
+    --bad:#e08a7a;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text-1)}
+  body{font:15px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+       -webkit-font-smoothing:antialiased;padding-bottom:80px}
+  a{color:inherit}
+  .wrap{max-width:1120px;margin:0 auto;padding:0 28px}
+
+  header{border-bottom:1px solid var(--line);background:var(--surface);position:sticky;top:0;z-index:20}
+  .bar{display:flex;align-items:center;gap:12px;height:60px}
+  .mark{width:26px;height:26px;border-radius:7px;background:var(--ink);color:var(--on-ink);
+        display:grid;place-items:center;font-size:14px;font-weight:800;flex:none}
+  .brand{font-size:16px;font-weight:700;letter-spacing:-.01em}
+  .sub{color:var(--text-3);font-size:12px;letter-spacing:.14em;text-transform:uppercase;
+       padding-left:12px;border-left:1px solid var(--line-2)}
+  .spacer{flex:1}
+  .tbtn{width:34px;height:34px;border-radius:999px;border:1px solid var(--line-2);background:transparent;
+        color:var(--text-1);cursor:pointer;font-size:15px;line-height:1;display:grid;place-items:center}
+  .tbtn:hover{background:var(--surface-2)}
+
+  h1{font-size:34px;line-height:1.25;letter-spacing:-.02em;margin:44px 0 10px;font-weight:800}
+  .lede{color:var(--text-2);font-size:17px;max-width:74ch;margin:0 0 34px}
+  h2{font-size:20px;letter-spacing:-.01em;margin:48px 0 8px;font-weight:750}
+  h2 .n{color:var(--text-3);font-weight:600;margin-right:10px;font-variant-numeric:tabular-nums}
+  .hint{color:var(--text-3);font-size:13.5px;margin:0 0 18px}
+
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:22px}
+  @media(max-width:860px){.grid{grid-template-columns:1fr}}
+  figure{margin:0;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--surface)}
+  figure img{display:block;width:100%;background:var(--surface-2)}
+  figcaption{padding:13px 16px 16px;border-top:1px solid var(--line)}
+  .cap{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}
+  .cap b{font-size:15px;font-weight:700}
+  .tag{font-size:11px;letter-spacing:.06em;padding:2px 7px;border-radius:5px;border:1px solid var(--line-2);
+       color:var(--text-2);flex:none}
+  .tag.light{background:var(--surface-2)}
+  .tag.dark{background:var(--ink);color:var(--on-ink);border-color:var(--ink)}
+  .note{color:var(--text-3);font-size:13.5px;margin-top:5px}
+  .file{color:var(--text-3);font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;margin-top:6px;word-break:break-all}
+
+  table{width:100%;border-collapse:collapse;font-size:14.5px;margin-top:6px}
+  th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line)}
+  th{color:var(--text-3);font-weight:600;font-size:12.5px;letter-spacing:.05em;text-transform:uppercase}
+  td:first-child{font-weight:600}
+  .ok{color:var(--ok)}
+  .bad{color:var(--bad)}
+  code{background:var(--surface-2);border:1px solid var(--line);border-radius:5px;padding:1px 6px;
+       font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px}
+
+  .callout{border:1px solid var(--line);border-left:3px solid var(--ink);border-radius:10px;
+           padding:16px 20px;background:var(--surface);margin:18px 0}
+  .callout.warn{border-left-color:var(--warn);background:var(--warn-wash)}
+  .callout p{margin:0 0 8px}
+  .callout p:last-child{margin-bottom:0}
+  .callout pre{background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:12px 14px;
+               overflow:auto;font-size:12.5px;line-height:1.6;
+               font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  ul{margin:8px 0 0;padding-left:22px}
+  li{margin:5px 0}
+  .foot{margin-top:52px;padding-top:22px;border-top:1px solid var(--line);color:var(--text-3);font-size:13.5px}
+
+  #lb{position:fixed;inset:0;background:rgba(0,0,0,.86);display:none;place-items:center;z-index:50;padding:28px}
+  #lb.on{display:grid}
+  #lb img{max-width:100%;max-height:100%;border-radius:8px;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap bar">
+    <span class="mark">S</span>
+    <span class="brand">Saltalk</span>
+    <span class="sub">UI 改版验收 · v1.4.6</span>
+    <span class="spacer"></span>
+    <button class="tbtn" id="theme" title="切换明暗">◐</button>
+  </div>
+</header>
+
+<main class="wrap">
+  <h1>纯黑白极简 UI 改版 · 验收图册</h1>
+  <p class="lede">
+    全部 19 张图来自 <b>真实构建产物</b>（<code>npm run build</code> 输出 + mock 数据 + 真实点击驱动），
+    不是手绘原型。本轮修掉 3 个问题：<b>左上角多余 logo</b>、<b>点词后选中块被撑成一条长条</b>、
+    <b>背单词卡片看不到中文释义</b>；并按你的补充要求加了<b>「点一下单词就直接看到意思」</b>，
+    随后又把它从「能看」修到<b>「点了就出来」</b>（首次 6.5 秒 → 0.7 秒，预取后 ≈ 0 毫秒）。
+    功能行为未变：DOM 结构与事件绑定保持等价，改动集中在 className、样式层与查词链路。
+  </p>
+
+  <h2><span class="n">01</span>质量门</h2>
+  <table>
+    <thead><tr><th>检查项</th><th>命令</th><th>结果</th></tr></thead>
+    <tbody>
+      <tr><td>类型检查</td><td><code>tsc --noEmit</code></td><td class="ok">0 错</td></tr>
+      <tr><td>单元测试</td><td><code>npm test</code></td><td class="ok">209 通过 / 0 失败</td></tr>
+      <tr><td>查词链路实测</td><td><code>node design/bench-word-lookup.mjs</code></td><td class="ok">首次 0.7–0.9 秒；缓存命中 0 毫秒</td></tr>
+      <tr><td>生产构建</td><td><code>npm run build</code></td><td class="ok">成功（CSS 54.3 kB / JS 654 kB）</td></tr>
+      <tr><td>渲染自检</td><td>19 张图内容互不相同</td><td class="ok">19 / 19 唯一</td></tr>
+      <tr><td>蓝色杂色扫描</td><td><code>node design/color-scan.cjs</code></td><td class="ok">19 张全部 0 像素</td></tr>
+      <tr><td>彩度审计</td><td>逐像素 <code>max-min&gt;25</code></td><td class="ok">18 张为 0；成绩页彩色为有意保留的语义色</td></tr>
+      <tr><td>守卫变异测试</td><td>把 <code>picked</code> 改回 <code>sel</code> / 换成 <code>list</code></td><td class="ok">两种变异各报红 2 条，还原后全绿</td></tr>
+      <tr><td>安装包图标</td><td><code>node design/verify-icon.cjs 1.4.5</code></td><td class="ok">安装包 6/6、应用 exe 6/6 档位逐字节命中</td></tr>
+      <tr><td>asar 内容校验</td><td>提取打包内 <code>index.cjs</code> / CSS</td><td class="ok"><code>.w.picked</code> 在、<code>.w.sel</code> 不在；<code>word:preview</code> 在；CSS md5 与源码构建一致</td></tr>
+      <tr><td>原生模块</td><td><code>better-sqlite3</code> prebuilds</td><td class="ok"><code>win32-x64.node</code> 已 asarUnpack</td></tr>
+    </tbody>
+  </table>
+
+  <h2><span class="n">02</span>本轮修掉的 3 个问题</h2>
+
+  <div class="callout">
+    <p><b>问题 1 · 左上角多了一个白色方块 logo</b>（按你的要求删除）</p>
+    <p><b>症状</b>：标题栏 <code>Saltalk</code> 左边有一个 24×24 的反色方块。</p>
+    <p><b>处理</b>：删掉 <code>App.tsx</code> 里的 <code>.brand-mark</code> 节点与 <code>main.css</code> 里对应的两条规则，
+      只留 <code>Saltalk / Listening</code> 字样。</p>
+  </div>
+
+  <div class="callout">
+    <p><b>问题 2 · 点击单词加入单词本时，被点中的词会「乱码」/ 右边多出一大段空白</b></p>
+    <p><b>症状</b>：练习页点词后，那一个词的黑底块被拉成一条长条（看起来像乱码）；
+      历史页同样的操作表现为词右边凭空多出大量空白。两处共用一个对话组件，其实是同一个 bug。</p>
+    <p><b>根因（类名撞车）</b>：可点单词的选中态写的是 <code>class="w sel"</code>，而 <code>.sel</code> 本来是
+      <b>原生 select 的包装器</b>。我的 <code>.w.sel</code> 只覆盖了颜色，<code>display / flex</code> 照单全收：</p>
+    <pre>.sel   { display: inline-flex; flex: 1; min-width: 0; }  /* 给 select 用的 */
+.w.sel { background: var(--ink); }                     /* 只改了颜色 */</pre>
+    <p>在 <code>display:flex; flex-wrap:wrap</code> 的句子里，被点中的那个词于是成了唯一 <code>flex-grow:1</code>
+      的项目，<b>吃掉整行剩余空间</b> —— 点哪个词，哪个词就变成长条。</p>
+    <p><b>定位</b>：给诊断脚本加一段「取选中词的 <code>getBoundingClientRect()</code> 与相邻节点的
+      <code>getComputedStyle().flex</code>」探针，<code>--dump-dom</code> 一读就现形 ——
+      选中词宽 <code>335px</code>（正常 22px），<code>flex</code> 是 <code>1 1 0%</code>，而兄弟节点都是 <code>0 1 auto</code>。</p>
+    <p><b>修复</b>：选中态改名 <code>.w.picked</code>，与 <code>.sel</code> 彻底分家。</p>
+    <p><b>防回归</b>：新增 2 条守卫 —— 定点断言 <code>.w.picked</code> 存在 / <code>.w.sel</code> 不存在；
+      以及一条通用规则：<b>条件状态类不许复用 main.css 里的结构类名</b>。
+      变异测试：把 <code>picked</code> 改回 <code>sel</code> 报红 2 条，改成结构类 <code>list</code> 同样报红 2 条。</p>
+  </div>
+
+  <div class="callout">
+    <p><b>问题 3 · 背单词点「显示中文」看不到单词意思，只看到一段话 + 这段话的中文</b></p>
+    <p><b>症状</b>：卡片背面显示的是一句英文例句和它的中文翻译，没有单词本身的中文释义。</p>
+    <p><b>根因（时序 + 快照）</b>：加入单词本是「先快速插入、后台异步补释义」—— <code>meaning</code> 先写
+      <code>null</code>，网络回来后再回填。加完立刻去背，卡片背面就只剩例句；更糟的是卡片用的是
+      <b>进入那一刻的快照</b>，即使后台补好了也不会更新。</p>
+    <p><b>修复</b>：</p>
+    <ul>
+      <li>背单词卡片改成<b>只存 id、内容从 store 实时取</b> —— 释义补上后卡片自己更新，不再停在空快照上；</li>
+      <li>新增「缺释义自愈」：进入单词本时后台补一次 <code>meaning</code> 为空的词（串行、限 5 条、带互斥锁），
+        老数据也能自己长回来；</li>
+      <li>释义没到位时，背面<b>只显示「释义获取中…」</b>，不再把例句顶上来冒充释义；</li>
+      <li>给词典请求补 6 秒超时 —— 那台服务在国内常连不上，之前会把「加入单词本」挂住几十秒。</li>
+    </ul>
+    <p><b>边界</b>：这套修复没有改动 <code>addWordToBook</code> 的既有契约（仍是「快速插入、后台补全」），
+      <code>service.test.ts</code> 里锁定该行为的断言原样通过。</p>
+  </div>
+
+  <div class="callout">
+    <p><b>追加 · 点一下单词就直接看到它的意思</b>（你的补充要求）</p>
+    <p><b>之前</b>：点词只浮出一个「加入单词本」按钮 —— 想知道它什么意思，得先加进单词本、再去背单词里翻。</p>
+    <p><b>现在</b>：点词立刻把释义摆在动作条里：<code>"Hi" /hi/ int. 你好；嗨（打招呼用语）</code>。
+      已在单词本里的词直接读本地释义（按钮换成「已在单词本」）。</p>
+    <p><b>实现</b>：新增 <code>word:preview</code> 通道（只查不落库），主进程侧带内存缓存。
+      快速连点不同的词时用请求序号丢弃过期响应，避免先发的慢请求把后点的词的释义盖掉。</p>
+    <p><b>对应新增状态图</b>：查到（15 / 16）、查询中（18）、已在单词本（19）。</p>
+  </div>
+
+  <div class="callout">
+    <p><b>追加 2 · 点词「太鸡肋」：要等好久才出释义 —— 挖出 6 秒白等</b></p>
+    <p><b>症状</b>：点一个词，释义要等很久才出现，功能形同虚设。</p>
+    <p><b>根因</b>：查词是<b>两步串行</b> —— 先调免费的 <code>api.dictionaryapi.dev</code> 拿英文释义与音标，
+      再调 Deepseek 翻成中文。而那个免费词典在国内网络下 <b>DNS 被污染，连接建得起来但拿不到响应</b>。
+      本机实测（<code>design/profile-word-lookup.cjs</code>）：</p>
+    <pre>lookupWord(negotiate)  6005 ms → 超时失败
+lookupWord(reception)  6017 ms → 超时失败
+lookupWord(colleague)  6008 ms → 超时失败
+translateWord(...)      385–731 ms → 正常</pre>
+    <p>也就是说 <b>3/3 全部卡满 6 秒超时</b>，然后才开始第二步翻译 —— 每次点词固定白等 6 秒。
+      更讽刺的是：它查到的英文释义最后还会被中文翻译<b>覆盖</b>，
+      这个接口唯一的实际贡献只有<b>音标</b>。为了一个音标等 6 秒，就是「鸡肋」的根因。</p>
+    <p><b>修复</b>：砍掉这个已不可用的词典，改成 <b>Deepseek 一次请求同时返回「音标 + 中文释义」</b>
+      （<code>lookupWords</code>，JSON 模式）。顺手加了<b>预取</b>：点第一个词时后台把整句的词一次查完，
+      之后点句中任何词都直接命中内存缓存。另外把「查不到不缓存」改成<b>短 TTL 负缓存</b>（60 秒），
+      避免连点同一个生僻词反复打网络。</p>
+    <p><b>实测（<code>node design/bench-word-lookup.mjs</code>，真实网络）</b>：</p>
+    <table>
+      <thead><tr><th>场景</th><th>旧版</th><th>现在</th></tr></thead>
+      <tbody>
+        <tr><td>冷启动点第一个词</td><td class="bad">≈ 6500 ms</td><td class="ok">672–892 ms</td></tr>
+        <tr><td>再点同一个词</td><td class="bad">≈ 6500 ms</td><td class="ok">0 ms</td></tr>
+        <tr><td>点预取过的词</td><td class="bad">≈ 6500 ms</td><td class="ok">0 ms</td></tr>
+        <tr><td>预取整句 8 个词</td><td>—</td><td class="ok">一次请求 0.8–2.3 秒（后台跑，不挡界面）</td></tr>
+      </tbody>
+    </table>
+    <p><b>取舍说明</b>：<code>src/main/dictionary.ts</code> 与它的单测已<b>归档</b>到
+      <code>design/_archived/removed-dictionary-module-1.4.6/</code>（不是直接删，git 里也有历史）。
+      它在这台机器上 0% 可用，留着只会让后人误以为音标有第二个来源。</p>
+    <p class="hint">⚠️ 归档别放 <code>dist/</code>：electron-builder 打包时会清空输出目录下
+      不属于它自己的内容（这一版就踩了，见「遗留事项」）。</p>
+    <p><b>新增防回归</b>：4 条 <code>lookupWords</code>/<code>parseGlosses</code> 单测 + 6 条
+      <code>prefetchWords</code> 单测，其中一条专门锁住「模型漏返回个别词时不许写负缓存」
+      —— 否则那个词会误显示「查不到释义」整整一分钟。</p>
+  </div>
+
+  <div class="callout warn">
+    <p><b>上一轮的历史案例（保留作守卫来源）</b>：四六级倒计时环外面曾多出 <b>3px 蓝色方框</b> ——
+      环的类名写成 <code>class="ring"</code>，撞上 Tailwind 内置工具类，而 <code>box-shadow</code> 没被覆盖。
+      这类问题类型检查、单测、肉眼 review 都抓不到，只能靠逐像素扫描发现，
+      于是有了 <code>designSystem.test.ts</code> 的第一批守卫。</p>
+  </div>
+
+  <h2><span class="n">03</span>19 张验收图</h2>
+  <p class="hint">点击任意图片可放大。图片路径：<code>design/app-shots/</code></p>
+  <div class="grid" id="shots"></div>
+
+  <h2><span class="n">04</span>改动文件</h2>
+  <ul>
+    <li><b>本轮 Bug 1</b> — <code>App.tsx</code>（删 <code>.brand-mark</code> 节点）、<code>main.css</code>（删对应 2 条规则）</li>
+    <li><b>本轮 Bug 2</b> — <code>DialoguePlayer.tsx</code>（选中态 <code>sel</code> → <code>picked</code>）、<code>main.css</code>（<code>.w.sel</code> → <code>.w.picked</code>）</li>
+    <li><b>本轮 Bug 3</b> — <code>WordBookView.tsx</code>（卡片改 id 队列 + 实时取词、缺释义占位）、
+      <code>store.ts</code> / <code>preload/index.ts</code> / <code>main/ipc.ts</code>（<code>word:enrichMissing</code> 通道）、
+      <code>main/service.ts</code>（<code>enrichMissingWords</code>、释义与读音拆分）、
+      <code>main/dictionary.ts</code>（6 秒超时）、<code>main.css</code>（2 条占位样式）</li>
+    <li><b>追加 · 点词即显释义</b> — <code>main/service.ts</code>（<code>previewWord</code> 与 <code>resolveMeaning</code> 抽取 + 内存缓存）、
+      <code>main/ipc.ts</code> / <code>preload/index.ts</code>（<code>word:preview</code> 通道）、
+      <code>DialoguePlayer.tsx</code>（点词即查 + 三态展示 + 请求序号防串词）、<code>main.css</code>（5 条动作条样式）</li>
+    <li><code>tests/unit/service.test.ts</code> — 新增 7 条（缺释义自愈 3 条 + 点词预览 4 条）</li>
+    <li><code>tests/unit/designSystem.test.ts</code> — 新增 2 条（<code>picked</code> 定点守卫 + 结构类名撞车通用守卫）</li>
+    <li><code>design/app-shots.cjs</code> — 出图脚本；新增点词/缺释义诊断探针与 <code>ONLY</code> 单跑开关</li>
+    <li><code>design/color-scan.cjs</code> — 新建，逐像素配色审计（canvas + <code>--dump-dom</code>）</li>
+    <li><code>design/verify-icon.cjs</code> — 新建，把源 ICO 的 6 档图片逐字节反向比对安装包与应用 exe（自带负对照）</li>
+    <li><b>本轮性能优化</b> — <code>main/deepseek.ts</code>（新增 <code>lookupWords</code> 批量查词，删掉只翻中文的 <code>translateWord</code>）、
+      <code>main/service.ts</code>（<code>resolveMeaning</code> 改走一次请求、新增 <code>prefetchWords</code>、负缓存 TTL）、
+      <code>main/ipc.ts</code> / <code>preload/index.ts</code>（<code>word:prefetch</code> 通道）、
+      <code>DialoguePlayer.tsx</code>（点第一个词时顺手预取整句）</li>
+    <li><em>归档</em> — <code>src/main/dictionary.ts</code> 与 <code>tests/unit/dictionary.test.ts</code>
+      移到 <code>design/_archived/removed-dictionary-module-1.4.6/</code>（该接口在本机 3/3 请求超时，且贡献仅剩音标）</li>
+    <li><code>design/bench-word-lookup.mjs</code> — 新建，实测「点词到出释义」的毫秒数（走真实网络，先复制数据库不碰用户数据）</li>
+    <li><code>design/profile-word-lookup.cjs</code> — 新建，分段实测两段网络各自的耗时（定位 6 秒白等就靠它）</li>
+    <li><em>历史（上一轮 UI 改版）</em>：<code>main.css</code> 整体重写、<code>Icons.tsx</code> 新建、各 View 的 className 全量改写</li>
+  </ul>
+
+  <h2><span class="n">05</span>遗留事项</h2>
+  <ul>
+    <li><b>点词释义需要联网</b>：首次查一个没预取过的词约 0.7–0.9 秒（个别网络抖动时可能到 1.5 秒）。
+      点过第一个词之后，整句的词都已预取，再点就是 0 毫秒。已在单词本里的词不受影响（直接读本地）。</li>
+    <li><b>预取会多发一次请求</b>：点词时后台把整句最多 24 个词一次查完 —— 换来的是后续点词瞬时。
+      这一步不阻塞界面，失败也不提示。</li>
+    <li><b>已存在的空释义词</b>：自愈逻辑会在每次进入单词本时补，但若网络一直不可用，它会一直是
+      「释义获取中…」，此时删掉重加即可重试</li>
+    <li>原型单文件 <code>design/ui-preview.html</code> 内仍叫 <code>.ring</code>；它自包含、无 Tailwind，不受影响，未改动</li>
+    <li>打包 exe 请用 <code>npm run dist</code>；本机 <code>PATHEXT</code> 被削过，需走
+      <code>win-electron-sqlite-build</code> 技能里的 wrapper</li>
+    <li><code>eb-parked-dist/</code> 是绕开打包删除阈值用的暂存目录，确认不需要后可清理。
+      <b>归档文件请放 <code>design/_archived/</code>，不要放 <code>dist/</code></b>
+      —— electron-builder 打包时会清空输出目录里不属于它的内容</li>
+  </ul>
+
+  <p class="foot">Saltalk · 纯黑白极简 UI 改版 · 2026-09-18</p>
+</main>
+
+<div id="lb"><img alt="" /></div>
+
+<script>
+  const SHOTS = [
+    ['15-pick-word-light','练习页 · 点词即显释义','浅色','点词后动作条直接给出 音标 + 中文释义，右侧是「加入单词本」。修前这里会拉出一条贯穿整行的黑条'],
+    ['18-pick-word-pending-light','练习页 · 释义查询中','浅色','网络还没回来时的占位「查询中…」（弱化显示），不遮挡「加入单词本」'],
+    ['19-pick-word-inbook-light','练习页 · 词已在单词本','浅色','已在单词本的词直接读本地释义，按钮换成「已在单词本」，不再重复收录'],
+    ['16-pick-word-history-light','历史页 · 点词即显释义','浅色','共用同一个对话组件，行为一致；修前表现是词右边凭空多出大片空白'],
+    ['17-study-back-nullmean-light','背单词 · 释义未到位','浅色','只显示「释义获取中…」，不再把例句 + 例句翻译顶上来冒充释义'],
+    ['08-words-study-back-light','背单词 · 卡片背面','浅色','释义（20px 加粗）在前、例句与例句翻译在后；已改为实时取词，释义补上会自动刷新'],
+    ['04-cet-answering-light','四六级 · 作答中','浅色','环形倒计时（已修 Bug：不再有蓝色方框）、四段进度轨、题目卡片当前态高亮'],
+    ['11-settings-light','设置页','浅色','分组卡片 + 换皮原生 select + 分段控件 + 反色主按钮'],
+    ['05-cet-finished-dark','四六级 · 成绩页','深色','大分数 + 逐题对比条；答对绿 / 答错红为有意保留的语义色'],
+    ['10-history-open-light','历史 · 展开详情','浅色','条目展开态、连续播放控制条、说话人 A 实心 / B 描边'],
+    ['07-words-study-light','背单词 · 卡片正面','浅色','3D 翻面卡正面；进度分母已冻结为开局数量（0/5）'],
+    ['02-practice-light','练习页 · 生成后','浅色','工具栏 / 生成说明 / 对话播放器完整态'],
+    ['03-practice-dark','练习页 · 生成后','深色','同一页面的深色主题'],
+    ['13-practice-cet-light','练习页 · 四级模式','浅色','体系切换为四六级后的工具栏与说明'],
+    ['06-words-light','单词本 · 列表','浅色','分类分段控件、单词行、发音按钮、释义与例句'],
+    ['09-history-light','历史 · 列表','浅色','条目折叠态、等级标签、时间戳'],
+    ['12-settings-cet-dark','设置页','深色','深色主题下的设置页'],
+    ['01-practice-empty-dark','练习页 · 空态','深色','首屏空态与主按钮；左上角 logo 已按要求删除'],
+    ['14-practice-busy-dark','练习页 · 生成中','深色','忙碌态：进度条 + 旋转指示']
+  ];
+  const box = document.getElementById('shots');
+  box.innerHTML = SHOTS.map(([f, title, theme, note]) => `
+    <figure>
+      <img src="app-shots/${f}.png" alt="${title}" loading="lazy" />
+      <figcaption>
+        <div class="cap"><b>${title}</b><span class="tag ${theme === '深色' ? 'dark' : 'light'}">${theme}</span></div>
+        <div class="note">${note}</div>
+        <div class="file">design/app-shots/${f}.png</div>
+      </figcaption>
+    </figure>`).join('');
+
+  const html = document.documentElement;
+  const saved = localStorage.getItem('review-theme');
+  if (saved) html.className = saved;
+  document.getElementById('theme').onclick = () => {
+    html.className = html.className === 'dark' ? 'light' : 'dark';
+    localStorage.setItem('review-theme', html.className);
+  };
+
+  const lb = document.getElementById('lb'), lbImg = lb.querySelector('img');
+  document.addEventListener('click', (e) => {
+    if (e.target.tagName === 'IMG' && e.target.closest('figure')) {
+      lbImg.src = e.target.src; lb.classList.add('on');
+    } else if (lb.classList.contains('on')) {
+      lb.classList.remove('on');
+    }
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') lb.classList.remove('on'); });
+</script>
+</body>
+</html>

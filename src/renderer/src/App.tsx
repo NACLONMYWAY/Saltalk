@@ -4,6 +4,7 @@ import PracticeView from './components/PracticeView.tsx'
 import WordBookView from './components/WordBookView.tsx'
 import HistoryView from './components/HistoryView.tsx'
 import SettingsView from './components/SettingsView.tsx'
+import IconSprite from './components/Icons.tsx'
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'practice', label: '练习' },
@@ -38,40 +39,54 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100 transition-colors">
-      <header className="border-b border-zinc-200 dark:border-zinc-800 px-6 py-3 flex items-center justify-between">
-        <h1 className="text-lg font-semibold tracking-wide">Saltalk</h1>
-        <div className="flex items-center gap-2">
-          <nav className="flex gap-1">
-            {TABS.map((t) => (
-              <button
-                key={t.key}
-                onClick={() => setTab(t.key)}
-                className={`px-3 py-1.5 rounded-md text-sm transition-colors ${
-                  tab === t.key
-                    ? 'bg-zinc-900 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900'
-                    : 'text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100'
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
-          </nav>
-          <button
-            onClick={toggleTheme}
-            className="ml-2 w-8 h-8 rounded-md border border-zinc-200 dark:border-zinc-700 flex items-center justify-center text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-            title={theme === 'dark' ? '切换到亮色' : '切换到暗色'}
-          >
-            {theme === 'dark' ? '☀️' : '🌙'}
-          </button>
+    <div className="shell">
+      <IconSprite />
+
+      <header className="appbar">
+        <div className="brand">
+          <span className="brand-name">Saltalk</span>
+          <span className="brand-sub">Listening</span>
         </div>
+
+        {/* 下划线式导航：指示线挂在当前项自己的 ::after 上，不做位置测量，零抖动 */}
+        <nav className="nav" role="tablist" aria-label="主导航">
+          {TABS.map((t) => (
+            <button
+              key={t.key}
+              role="tab"
+              aria-selected={tab === t.key}
+              onClick={() => setTab(t.key)}
+              className="nav-btn"
+            >
+              {t.label}
+            </button>
+          ))}
+        </nav>
+
+        <span className="appbar-sep" />
+
+        <button
+          onClick={toggleTheme}
+          className="theme-sw"
+          aria-label="切换主题"
+          title={theme === 'dark' ? '切换到亮色' : '切换到暗色'}
+        >
+          <span className="theme-knob">
+            <svg className="i">
+              <use href={theme === 'dark' ? '#i-moon' : '#i-sun'} />
+            </svg>
+          </span>
+        </button>
       </header>
 
-      <main className="flex-1 overflow-auto">
-        {tab === 'practice' && <PracticeView />}
-        {tab === 'words' && <WordBookView />}
-        {tab === 'history' && <HistoryView />}
-        {tab === 'settings' && <SettingsView />}
+      <main className="main">
+        {/* key 让切页时重放入场动效；仅动画，不改变任何渲染逻辑 */}
+        <div className="view" key={tab}>
+          {tab === 'practice' && <PracticeView />}
+          {tab === 'words' && <WordBookView />}
+          {tab === 'history' && <HistoryView />}
+          {tab === 'settings' && <SettingsView />}
+        </div>
       </main>
     </div>
   )

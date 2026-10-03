@@ -42,6 +42,8 @@ interface AppState {
   deleteWord: (id: string) => Promise<void>
   markWordMastered: (id: string, mastered: boolean) => Promise<void>
   reviewWord: (id: string, remembered: boolean) => Promise<void>
+  /** 补齐释义为空的单词，补完自动刷新列表；返回补齐条数 */
+  enrichMissingWords: () => Promise<number>
 
   // settings
   apiKey: string
@@ -178,6 +180,12 @@ export const useAppStore = create<AppState>()((set, get) => ({
   reviewWord: async (id, remembered) => {
     await api.reviewWord(id, remembered)
     await get().refreshWords()
+  },
+
+  enrichMissingWords: async () => {
+    const n = await api.enrichMissingWords()
+    if (n > 0) await get().refreshWords()
+    return n
   },
 
   apiKey: '',

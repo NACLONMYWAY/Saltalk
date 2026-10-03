@@ -51,53 +51,62 @@ export default function HistoryView() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-6 py-6 space-y-2">
-      {conversations.map((c) => (
-        <div key={c.id} className="bg-white border border-zinc-200 rounded-xl overflow-hidden dark:bg-zinc-900 dark:border-zinc-800">
-          <div className="flex items-center gap-2 p-3">
-            <button onClick={() => toggleExpand(c.id)} className="flex-1 text-left hover:bg-zinc-100 dark:hover:bg-zinc-800/50 rounded p-1 -m-1 transition-colors">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-zinc-900 dark:text-zinc-100 font-medium truncate">
-                  {c.title || c.topic}
-                </span>
-                <span className="shrink-0 flex items-center gap-1.5">
-                  <span className="px-1.5 py-0.5 rounded text-[11px] bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
-                    {SYSTEM_LABEL[c.system]}
+    <div className="wrap">
+      <div className="list">
+        {conversations.map((c) => (
+          <div key={c.id} className={`hist${expandedId === c.id ? ' open' : ''}`}>
+            <div className="hist-head">
+              <button onClick={() => toggleExpand(c.id)} className="hist-main">
+                <svg className="i hist-chev">
+                  <use href="#i-chev-r" />
+                </svg>
+                <span className="hist-txt">
+                  <span className="hist-title">{c.title || c.topic}</span>
+                  <span className="hist-sub">
+                    <span className="tag">{SYSTEM_LABEL[c.system]}</span>
+                    <span>{levelDisplay(c.system, c.level)}</span>
+                    <span>·</span>
+                    <span>{new Date(c.createdAt).toLocaleString()}</span>
                   </span>
-                  <span className="text-xs text-zinc-400 dark:text-zinc-500">
-                    {levelDisplay(c.system, c.level)}
-                  </span>
                 </span>
-              </div>
-              <div className="text-sm text-zinc-400 dark:text-zinc-500 mt-1 truncate">
-                {c.title ? `${c.topic} · ` : ''}
-                {new Date(c.createdAt).toLocaleString()}
-              </div>
-            </button>
-            <button
-              onClick={() => handleDelete(c.id)}
-              className="shrink-0 px-2 py-1 rounded text-xs text-zinc-400 hover:text-red-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-              title="删除"
-            >
-              删除
-            </button>
-          </div>
-
-          {expandedId === c.id && (
-            <div className="border-t border-zinc-200 dark:border-zinc-800 p-3">
-              {loading ? (
-                <div className="text-zinc-400 dark:text-zinc-500 text-sm py-4 text-center">加载中…</div>
-              ) : modeOf(c.system) === 'exam' && questions.length > 0 ? (
-                <CetPlayer sentences={sentences} questions={questions} introUrl={introUrl} />
-              ) : (
-                <DialoguePlayer sentences={sentences} />
-              )}
+              </button>
+              <button
+                onClick={() => handleDelete(c.id)}
+                className="act-text act-del"
+                title="删除这条记录"
+              >
+                删除
+              </button>
             </div>
-          )}
-        </div>
-      ))}
+
+            {expandedId === c.id && (
+              <div className="hist-body">
+                {loading ? (
+                  <div className="busy justify-center">
+                    <span className="spin" />
+                    <span className="busy-label">加载中…</span>
+                  </div>
+                ) : modeOf(c.system) === 'exam' && questions.length > 0 ? (
+                  <CetPlayer sentences={sentences} questions={questions} introUrl={introUrl} />
+                ) : (
+                  <DialoguePlayer sentences={sentences} />
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
       {conversations.length === 0 && (
-        <div className="text-zinc-400 dark:text-zinc-500 text-center py-8">暂无历史对话</div>
+        <div className="empty">
+          <span className="empty-ico">
+            <svg className="i i-lg">
+              <use href="#i-clock" />
+            </svg>
+          </span>
+          <span className="empty-t">暂无历史对话</span>
+          <span className="empty-d">在练习页生成过的对话与听力题，都会自动存在这里。</span>
+        </div>
       )}
     </div>
   )

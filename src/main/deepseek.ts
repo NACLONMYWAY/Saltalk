@@ -426,17 +426,86 @@ export async function generateExamDialogue(
   throw new Error(`生成的听力题不符合真题格式，已自动重试一次仍失败：${reason}`)
 }
 
-/** 用 Deepseek 把英文单词翻译成中文释义（网络调用，测试时注入 fetch） */
-export async function translateWord(
-  word: string,
+/** 一个词的音标与中文释义 */
+export interface WordGloss {
+  /** 小写单词 */
+  word: string
+  phonetic: string | null
+  meaning: string | null
+}
+
+/** 统一音标写法：去空白、统一用斜杠包裹；空值给 null */
+export function normalizePhonetic(v: unknown): string | null {
+  if (typeof v !== 'string') return null
+  const t = v
+    .trim()
+    .replace(/^[/[\]()]+/, '')
+    .replace(/[/[\]()]+$/, '')
+    .trim()
+  if (!t) return null
+  return `/${t}/`
+}
+
+/** 解析批量查词的 JSON 响应，容错：脏数据跳过，不抛错 */
+export function parseGlosses(content: string): WordGloss[] {
+  let raw: unknown
+  try {
+    raw = JSON.parse(content)
+  } catch {
+    return []
+  }
+  const list = (raw as { words?: unknown } | null)?.words
+  if (!Array.isArray(list)) return []
+
+  const out: WordGloss[] = []
+  for (const item of list) {
+    if (!item || typeof item !== 'object') continue
+    const o = item as { word?: unknown; phonetic?: unknown; meaning?: unknown }
+    if (typeof o.word !== 'string' || !o.word.trim()) continue
+    const meaning = typeof o.meaning === 'string' && o.meaning.trim() ? o.meaning.trim() : null
+    out.push({ word: o.word.trim().toLowerCase(), phonetic: normalizePhonetic(o.phonetic), meaning })
+  }
+  return out
+}
+
+/**
+ * 批量查词：一次请求拿回多个词的「音标 + 中文释义」。
+ *
+ * 为什么不用免费的 free-dictionary API：`api.dictionaryapi.dev` 在国内网络下
+ * 实测 **3/3 请求都卡满 6 秒超时后失败**（DNS 被污染，连接建得起来但拿不到响应），
+ * 而它查到的英文释义最终又会被中文释义覆盖 —— 它唯一的贡献只有音标。
+ * 为了一个音标让用户每次点词白等 6 秒，是「点词即显」变鸡肋的直接原因。
+ * 改由 Deepseek 一次给出音标与释义，实测 0.4–0.8 秒。
+ *
+ * 批量能力同时服务于预取：整句的词一次查完，之后点哪个都是瞬时命中缓存。
+ */
+export async function lookupWords(
+  words: string[],
   apiKey: string,
-  fetcher: typeof fetch = fetch
-): Promise<string> {
+  fetcher: typeof fetch = fetch,
+  signal?: AbortSignal
+): Promise<WordGloss[]> {
+  const unique = [...new Set(words.map((w) => w.trim().toLowerCase()).filter(Boolean))]
+  if (unique.length === 0) return []
+
   const content = await requestContent(
     apiKey,
-    `请将英文单词"${word}"翻译成中文，只返回最常用的中文释义（2-6个字），不要任何解释或标点。如果该词有多个常见词性，返回最多 2 个释义，用中文分号「；」分隔。`,
+    [
+      '你是英汉词典。请给出下列英文单词的音标与最常用的中文释义。',
+      '',
+      `单词：${unique.join(', ')}`,
+      '',
+      '要求：',
+      '1. phonetic：常用音标，用斜杠包裹，例如 /nɪˈɡoʊʃieɪt/；拿不准就给 null',
+      '2. meaning：最常用的中文释义，2~8 个字；有多个常见词性时最多给 2 个，用中文分号「；」分隔；查不到就给 null',
+      '3. word 必须原样返回我给出的单词（小写）',
+      '4. 每个我给出的单词都要在 words 里出现一次，不要漏、不要加别的词',
+      '5. 只输出 JSON，不要任何解释文字或 markdown 代码块，形如：',
+      '{"words":[{"word":"negotiate","phonetic":"/nɪˈɡoʊʃieɪt/","meaning":"谈判；协商"}]}'
+    ].join('\n'),
     fetcher,
-    { temperature: 0.2, jsonMode: false }
+    { temperature: 0.2, jsonMode: true, signal }
   )
-  return content.trim()
+
+  return parseGlosses(content)
 }

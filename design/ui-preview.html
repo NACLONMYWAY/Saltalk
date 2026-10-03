@@ -1,0 +1,2434 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark" data-semantic="on">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Saltalk · UI 重构预览 v1</title>
+<style>
+/* ============================================================
+   Saltalk 设计系统 — 纯黑白极简
+   原则：无色相。层级只靠 面(面/二级面) / 线(常规/强调) / 文字三级 / 反色块 四组手段建立。
+   语义色（错误、正确）默认开启，可在右下角面板一键关掉看纯黑白效果。
+   ============================================================ */
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root{
+  /* —— 面 —— */
+  --bg:#FAFAF9;
+  --surface:#FFFFFF;
+  --surface-2:#F4F4F5;
+  --surface-3:#EAEAEC;
+  /* —— 线 —— */
+  --line:#E6E6E9;
+  --line-2:#D6D6DB;
+  /* —— 文字三级 —— */
+  --text-1:#151518;
+  --text-2:#55555E;
+  --text-3:#94949E;
+  /* —— 反色块 —— */
+  --ink:#151518;
+  --on-ink:#FAFAFA;
+  --ink-hover:#37373E;
+  /* —— 语义色（可关） —— */
+  --danger:#B02A2A;
+  --danger-wash:#FCEEEE;
+  --danger-line:#E8C3C3;
+  --ok:#1D6B4C;
+  --ok-wash:#EDF6F1;
+  --ok-line:#C2DFD0;
+  --warn:#8A5A12;
+  --warn-wash:#FAF3E6;
+  --warn-line:#E6D2AC;
+
+  --shadow-1:0 1px 2px rgba(16,16,20,.05);
+  --shadow-2:0 2px 6px -1px rgba(16,16,20,.06), 0 12px 28px -14px rgba(16,16,20,.18);
+  --shadow-3:0 24px 60px -28px rgba(16,16,20,.32);
+
+  --r-xs:6px; --r-sm:8px; --r-md:11px; --r-lg:14px; --r-xl:18px; --r-2xl:24px;
+  --ease:cubic-bezier(.22,.61,.36,1);
+  --ease-out:cubic-bezier(.16,1,.3,1);
+  --t-1:130ms; --t-2:200ms; --t-3:340ms; --t-4:520ms;
+
+  --shell:800px;
+}
+
+[data-theme="dark"]{
+  --bg:#08080A;
+  --surface:#0F0F12;
+  --surface-2:#17171B;
+  --surface-3:#202026;
+  --line:#232329;
+  --line-2:#33333C;
+  --text-1:#F4F4F6;
+  --text-2:#A3A3AD;
+  --text-3:#6D6D77;
+  --ink:#F4F4F6;
+  --on-ink:#0B0B0D;
+  --ink-hover:#D6D6DC;
+  --danger:#E07A72;
+  --danger-wash:#221012;
+  --danger-line:#3E2124;
+  --ok:#63C194;
+  --ok-wash:#0C1D16;
+  --ok-line:#1E3A2C;
+  --warn:#D2A155;
+  --warn-wash:#1D1608;
+  --warn-line:#3B2F14;
+  --shadow-1:0 1px 2px rgba(0,0,0,.4);
+  --shadow-2:0 2px 6px -1px rgba(0,0,0,.5), 0 14px 32px -16px rgba(0,0,0,.7);
+  --shadow-3:0 28px 70px -30px rgba(0,0,0,.85);
+}
+
+/* 关掉语义色 → 全部收敛为纯粹的黑白 */
+[data-semantic="off"]{
+  --danger:var(--text-1); --danger-wash:var(--surface-2); --danger-line:var(--line-2);
+  --ok:var(--text-1);     --ok-wash:var(--surface-2);     --ok-line:var(--line-2);
+  --warn:var(--text-1);   --warn-wash:var(--surface-2);   --warn-line:var(--line-2);
+}
+
+html{background:var(--bg)}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI Variable Text","Segoe UI","PingFang SC","Microsoft YaHei UI","Microsoft YaHei",system-ui,sans-serif;
+  color:var(--text-1);
+  background:var(--bg);
+  font-size:14px;
+  line-height:1.55;
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+  transition:background var(--t-3) var(--ease), color var(--t-3) var(--ease);
+  padding-bottom:64px;
+}
+
+/* ---------- 焦点环：所有交互元素统一 ---------- */
+:focus{outline:none}
+:focus-visible{
+  outline:2px solid var(--text-1);
+  outline-offset:2px;
+  border-radius:var(--r-sm);
+}
+
+/* hidden 属性必须能压过组件自身的 display（.eq 是 display:flex，会盖掉 [hidden]） */
+[hidden]{display:none!important}
+
+/* ---------- 图标 ---------- */
+.i{width:16px;height:16px;flex:none;display:block;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.i-fill{fill:currentColor;stroke:none}
+.i-sm{width:14px;height:14px}
+.i-xs{width:9px;height:9px;stroke-width:3}
+.i-lg{width:20px;height:20px}
+
+/* ============================================================
+   应用外壳
+   ============================================================ */
+.shell{min-height:100vh;display:flex;flex-direction:column}
+
+.appbar{
+  position:sticky;top:0;z-index:40;
+  display:flex;align-items:center;gap:16px;
+  padding:0 22px;height:56px;
+  background:color-mix(in srgb, var(--bg) 82%, transparent);
+  backdrop-filter:saturate(1.4) blur(14px);
+  -webkit-backdrop-filter:saturate(1.4) blur(14px);
+  border-bottom:1px solid var(--line);
+  transition:background var(--t-3) var(--ease), border-color var(--t-3) var(--ease);
+}
+
+.brand{display:flex;align-items:center;gap:9px;flex:none;user-select:none}
+.brand-mark{
+  width:24px;height:24px;border-radius:7px;
+  background:var(--ink);color:var(--on-ink);
+  display:grid;place-items:center;
+  transition:background var(--t-2) var(--ease), color var(--t-2) var(--ease);
+}
+.brand-mark svg{width:14px;height:14px;stroke-width:2}
+.brand-name{
+  font-size:15px;font-weight:600;letter-spacing:.02em;
+  color:var(--text-1);
+}
+.brand-sub{
+  font-size:10.5px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--text-3);margin-left:1px;
+  padding-left:9px;border-left:1px solid var(--line);
+}
+
+/* ---------- 导航：下划线式 tab ---------- */
+.nav{position:relative;display:flex;gap:2px;margin-left:auto}
+.nav-btn{
+  appearance:none;border:0;background:none;cursor:pointer;
+  font:inherit;font-size:13.5px;font-weight:500;
+  color:var(--text-3);
+  padding:0 12px;height:56px;
+  position:relative;
+  transition:color var(--t-1) var(--ease);
+}
+.nav-btn:hover{color:var(--text-1)}
+.nav-btn[aria-selected="true"]{color:var(--text-1)}
+.nav-btn:focus-visible{border-radius:6px;outline-offset:-6px}
+.nav-ink{
+  position:absolute;bottom:-1px;height:1.5px;background:var(--text-1);
+  transition:transform var(--t-3) var(--ease-out), width var(--t-3) var(--ease-out);
+  border-radius:2px;
+}
+.appbar-sep{width:1px;height:20px;background:var(--line);flex:none}
+
+/* ---------- 主题开关 ---------- */
+.theme-sw{
+  appearance:none;border:1px solid var(--line);background:var(--surface);
+  width:52px;height:28px;border-radius:99px;cursor:pointer;position:relative;
+  flex:none;padding:0;
+  transition:background var(--t-2) var(--ease), border-color var(--t-2) var(--ease);
+}
+.theme-sw:hover{border-color:var(--line-2)}
+.theme-knob{
+  position:absolute;top:2px;left:2px;width:22px;height:22px;border-radius:99px;
+  background:var(--ink);color:var(--on-ink);
+  display:grid;place-items:center;
+  transition:transform var(--t-3) var(--ease-out), background var(--t-2) var(--ease), color var(--t-2) var(--ease);
+}
+[data-theme="dark"] .theme-knob{transform:translateX(24px)}
+.theme-knob svg{width:12px;height:12px;stroke-width:2}
+
+/* ============================================================
+   页面容器与切换动效
+   ============================================================ */
+.main{flex:1;overflow:visible}
+.view{display:none}
+.view.on{display:block;animation:viewIn var(--t-3) var(--ease-out) both}
+@keyframes viewIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+.wrap{max-width:var(--shell);margin:0 auto;padding:26px 22px 40px;display:flex;flex-direction:column;gap:18px}
+.wrap-narrow{max-width:640px}
+.wrap-mid{max-width:700px}
+
+/* 列表逐条入场 */
+.stagger>*{animation:itemIn var(--t-3) var(--ease-out) both}
+.stagger>*:nth-child(1){animation-delay:0ms}
+.stagger>*:nth-child(2){animation-delay:34ms}
+.stagger>*:nth-child(3){animation-delay:68ms}
+.stagger>*:nth-child(4){animation-delay:102ms}
+.stagger>*:nth-child(5){animation-delay:136ms}
+.stagger>*:nth-child(6){animation-delay:170ms}
+.stagger>*:nth-child(7){animation-delay:204ms}
+.stagger>*:nth-child(8){animation-delay:238ms}
+@keyframes itemIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+/* ============================================================
+   基础控件
+   ============================================================ */
+.btn{
+  appearance:none;font:inherit;font-size:13.5px;font-weight:500;
+  display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  padding:0 14px;height:36px;border-radius:var(--r-md);
+  border:1px solid var(--line);background:var(--surface);color:var(--text-1);
+  cursor:pointer;white-space:nowrap;
+  transition:background var(--t-1) var(--ease), border-color var(--t-1) var(--ease),
+             color var(--t-1) var(--ease), transform var(--t-1) var(--ease),
+             box-shadow var(--t-1) var(--ease);
+}
+.btn:hover{background:var(--surface-2);border-color:var(--line-2)}
+.btn:active{transform:scale(.985)}
+.btn-primary{
+  background:var(--ink);color:var(--on-ink);border-color:var(--ink);
+  box-shadow:var(--shadow-1);
+}
+.btn-primary:hover{background:var(--ink-hover);border-color:var(--ink-hover)}
+.btn-quiet{border-color:transparent;background:transparent;color:var(--text-2)}
+.btn-quiet:hover{background:var(--surface-2);color:var(--text-1);border-color:transparent}
+.btn-xs{height:26px;padding:0 9px;font-size:12px;border-radius:var(--r-xs);gap:5px}
+.btn-sm{height:30px;padding:0 11px;font-size:12.5px;border-radius:var(--r-sm)}
+.btn-danger-ghost{color:var(--text-2)}
+.btn-danger-ghost:hover{color:var(--danger);background:var(--danger-wash);border-color:var(--danger-line)}
+.btn[disabled]{opacity:.42;cursor:not-allowed;transform:none;pointer-events:none}
+
+/* 图标按钮 */
+.icon-btn{
+  appearance:none;border:0;background:none;cursor:pointer;color:var(--text-3);
+  width:28px;height:28px;border-radius:var(--r-sm);
+  display:grid;place-items:center;flex:none;
+  transition:background var(--t-1) var(--ease), color var(--t-1) var(--ease), transform var(--t-1) var(--ease);
+}
+.icon-btn:hover{background:var(--surface-2);color:var(--text-1)}
+.icon-btn:active{transform:scale(.94)}
+.icon-btn[disabled]{opacity:.3;pointer-events:none}
+
+/* 开关式 chip：靠圆点表达开关，不靠颜色 */
+.chip{
+  appearance:none;font:inherit;font-size:12.5px;font-weight:500;
+  display:inline-flex;align-items:center;gap:7px;
+  height:30px;padding:0 11px;border-radius:99px;
+  border:1px solid var(--line);background:transparent;color:var(--text-2);
+  cursor:pointer;white-space:nowrap;
+  transition:all var(--t-1) var(--ease);
+}
+.chip:hover{border-color:var(--line-2);color:var(--text-1)}
+.chip-dot{
+  width:6px;height:6px;border-radius:99px;flex:none;
+  border:1px solid var(--line-2);background:transparent;
+  transition:all var(--t-2) var(--ease);
+}
+.chip[aria-pressed="true"]{background:var(--surface-2);border-color:var(--line-2);color:var(--text-1)}
+.chip[aria-pressed="true"] .chip-dot{background:var(--ink);border-color:var(--ink);transform:scale(1.18)}
+
+/* 输入 */
+.input{
+  width:100%;font:inherit;font-size:13.5px;height:38px;
+  padding:0 12px;border-radius:var(--r-md);
+  border:1px solid var(--line);background:var(--surface);color:var(--text-1);
+  transition:border-color var(--t-1) var(--ease), box-shadow var(--t-1) var(--ease), background var(--t-1) var(--ease);
+}
+.input::placeholder{color:var(--text-3)}
+.input:hover{border-color:var(--line-2)}
+.input:focus{outline:none;border-color:var(--text-2);box-shadow:0 0 0 3px color-mix(in srgb,var(--text-1) 7%,transparent)}
+
+/* 分段控件：滑动指示器 */
+.seg{
+  position:relative;display:inline-flex;padding:3px;gap:0;
+  background:var(--surface-2);border-radius:var(--r-md);
+  border:1px solid transparent;
+}
+.seg-ink{
+  position:absolute;top:3px;bottom:3px;border-radius:8px;
+  background:var(--surface);box-shadow:var(--shadow-1);
+  border:1px solid var(--line);
+  transition:transform var(--t-3) var(--ease-out), width var(--t-3) var(--ease-out);
+}
+.seg-btn{
+  appearance:none;border:0;background:none;cursor:pointer;font:inherit;
+  font-size:13px;font-weight:500;color:var(--text-3);
+  padding:0 14px;height:28px;border-radius:8px;position:relative;z-index:1;
+  display:inline-flex;align-items:center;gap:6px;
+  transition:color var(--t-2) var(--ease);
+}
+.seg-btn:hover{color:var(--text-1)}
+.seg-btn[aria-selected="true"]{color:var(--text-1)}
+.seg-btn em{
+  font-style:normal;font-size:11px;font-variant-numeric:tabular-nums;
+  color:var(--text-3);font-weight:500;
+}
+.seg-btn[aria-selected="true"] em{color:var(--text-2)}
+
+/* 卡片 */
+.card{
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);
+  transition:background var(--t-2) var(--ease), border-color var(--t-2) var(--ease);
+}
+.card-pad{padding:16px}
+
+/* 分隔 */
+.hr{height:1px;background:var(--line);border:0}
+.sect-title{
+  font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--text-3);
+}
+
+/* 提示条 */
+.note{
+  display:flex;gap:10px;align-items:flex-start;
+  font-size:12.5px;line-height:1.65;color:var(--text-2);
+  padding:12px 14px;border-radius:var(--r-md);
+  background:var(--surface-2);border:1px solid transparent;
+}
+.note svg{margin-top:2px;color:var(--text-3)}
+.note-warn{background:var(--warn-wash);border-color:var(--warn-line);color:var(--warn)}
+.note-warn svg{color:var(--warn)}
+.note-danger{background:var(--danger-wash);border-color:var(--danger-line);color:var(--danger)}
+.note-danger svg{color:var(--danger)}
+
+/* ============================================================
+   练习页 · 工具栏
+   ============================================================ */
+.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+/* 输入框 + 内联随机按钮 */
+.field{position:relative;flex:1 1 240px;min-width:200px}
+.field .input{padding-right:40px}
+.field-suffix{
+  position:absolute;right:4px;top:50%;transform:translateY(-50%);
+}
+
+/* 自定义下拉 */
+.select{position:relative}
+.select-btn{
+  appearance:none;font:inherit;font-size:13.5px;
+  display:inline-flex;align-items:center;gap:8px;
+  height:38px;padding:0 11px 0 13px;border-radius:var(--r-md);
+  border:1px solid var(--line);background:var(--surface);color:var(--text-1);
+  cursor:pointer;white-space:nowrap;
+  transition:all var(--t-1) var(--ease);
+}
+.select-btn:hover{border-color:var(--line-2);background:var(--surface-2)}
+.select-btn .i{color:var(--text-3);transition:transform var(--t-2) var(--ease)}
+.select.open .select-btn{border-color:var(--text-2)}
+.select.open .select-btn .i{transform:rotate(180deg)}
+.select-val{font-variant-numeric:tabular-nums}
+.select-val small{color:var(--text-3);font-size:11.5px;margin-left:4px}
+
+.menu{
+  position:absolute;z-index:60;top:calc(100% + 6px);left:0;
+  /* 触发按钮可能只有 85px 宽（"CEFR B1"），菜单跟着它会窄到把选项折行 */
+  min-width:max(100%, 200px);
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);
+  box-shadow:var(--shadow-3);padding:5px;
+  max-height:288px;overflow:auto;
+  opacity:0;transform:translateY(-6px) scale(.98);pointer-events:none;
+  transform-origin:top left;
+  transition:opacity var(--t-2) var(--ease), transform var(--t-2) var(--ease-out);
+}
+.select.open .menu{opacity:1;transform:none;pointer-events:auto}
+.menu-item{
+  display:flex;align-items:center;gap:9px;width:100%;
+  appearance:none;border:0;background:none;cursor:pointer;font:inherit;
+  font-size:13px;color:var(--text-1);text-align:left;
+  padding:8px 10px;border-radius:var(--r-sm);
+  transition:background var(--t-1) var(--ease);
+}
+.menu-item:hover{background:var(--surface-2)}
+.menu-item .mi-check{width:14px;flex:none;color:var(--text-1);opacity:0;transition:opacity var(--t-1) var(--ease)}
+.menu-item[aria-selected="true"] .mi-check{opacity:1}
+.menu-item .mi-label{flex:1;min-width:0}
+.menu-item[aria-selected="true"] .mi-label{font-weight:600}
+.menu-sep{height:1px;background:var(--line);margin:5px 4px}
+.menu-head{
+  font-size:10.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--text-3);padding:9px 10px 5px;
+}
+
+/* 生成中的进度条 */
+.bar{
+  height:2px;background:var(--surface-3);border-radius:99px;overflow:hidden;position:relative;
+}
+.bar::after{
+  content:"";position:absolute;inset:0;width:38%;border-radius:99px;background:var(--text-1);
+  animation:sweep 1.25s var(--ease) infinite;
+}
+@keyframes sweep{0%{transform:translateX(-100%)}100%{transform:translateX(360%)}}
+
+.busy{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-2)}
+.busy-label{flex:1;min-width:0}
+.busy-count{font-variant-numeric:tabular-nums;color:var(--text-3);font-size:12px}
+
+.spin{
+  width:14px;height:14px;flex:none;border-radius:99px;
+  border:1.8px solid var(--line-2);border-top-color:var(--text-1);
+  animation:spin .7s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* 骨架屏 */
+.skel{background:var(--surface-2);border-radius:var(--r-xs);position:relative;overflow:hidden}
+.skel::after{
+  content:"";position:absolute;inset:0;
+  background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--text-1) 6%,transparent),transparent);
+  animation:shimmer 1.4s infinite;
+}
+@keyframes shimmer{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
+
+/* ============================================================
+   对话播放器
+   ============================================================ */
+.player-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.player-bar .grow{flex:1}
+
+/* 字幕：一整份，靠发丝线分隔，不再是一堆各自带边框的小卡片 */
+.sent-list{
+  display:flex;flex-direction:column;gap:0;
+  border:1px solid var(--line);border-radius:var(--r-xl);
+  background:var(--surface);overflow:hidden;
+  transition:border-color var(--t-2) var(--ease), background var(--t-2) var(--ease);
+}
+.sent{
+  position:relative;display:flex;gap:11px;align-items:flex-start;
+  padding:12px 13px 12px 16px;
+  border:0;border-bottom:1px solid var(--line);border-radius:0;
+  background:transparent;
+  transition:background var(--t-2) var(--ease);
+}
+.sent:last-child{border-bottom:0}
+.sent:hover{background:var(--surface-2)}
+/* 左侧状态轨：只有播放中才亮起并呼吸 */
+.sent::before{
+  content:"";position:absolute;left:0;top:12px;bottom:12px;width:2px;border-radius:2px;
+  background:transparent;transition:background var(--t-2) var(--ease);
+}
+.sent.playing{background:var(--surface-2)}
+.sent.playing::before{background:var(--text-1);animation:breathe 1.6s var(--ease) infinite}
+@keyframes breathe{0%,100%{opacity:.35;transform:scaleY(.62)}50%{opacity:1;transform:scaleY(1)}}
+.sent.dim{opacity:.55}
+
+.badge{
+  flex:none;width:22px;height:22px;border-radius:99px;
+  display:grid;place-items:center;
+  font-size:11px;font-weight:700;letter-spacing:0;
+  margin-top:1px;
+  transition:all var(--t-2) var(--ease);
+}
+/* 纯黑白区分说话人：A 实心 / B 描边 —— 信息不丢，零色相 */
+.badge-a{background:var(--ink);color:var(--on-ink)}
+.badge-b{background:transparent;color:var(--text-2);border:1.5px solid var(--line-2)}
+.sent.playing .badge-b{border-color:var(--text-2)}
+
+.sent-body{flex:1;min-width:0}
+.en{
+  font-size:15px;line-height:1.72;color:var(--text-1);
+  letter-spacing:.002em;
+  display:flex;flex-wrap:wrap;column-gap:5px;row-gap:2px;align-items:baseline;
+}
+.zh{
+  font-size:12.5px;line-height:1.7;color:var(--text-2);margin-top:5px;
+  padding-top:5px;border-top:1px dashed var(--line);
+  animation:zhIn var(--t-3) var(--ease-out) both;
+}
+@keyframes zhIn{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
+
+/* 可点单词：选中 = 反白，黑白下最像「被拿起」 */
+.w{
+  cursor:pointer;border-radius:4px;padding:1px 2px;margin:-1px -2px;
+  transition:background var(--t-1) var(--ease), color var(--t-1) var(--ease);
+}
+.w:hover{background:var(--surface-3)}
+.w.sel{background:var(--ink);color:var(--on-ink)}
+
+.sent-actions{display:flex;gap:2px;align-items:center;flex:none;margin-top:-2px}
+
+/* 加入单词本：浮出的动作条 */
+.pickbar{
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  margin-top:9px;padding-top:9px;border-top:1px dashed var(--line);
+  animation:pickIn var(--t-2) var(--ease-out) both;
+}
+@keyframes pickIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+.pick-word{
+  font-size:13px;font-weight:600;color:var(--text-1);
+  padding:1px 2px;
+}
+.pick-word::before{content:"“";color:var(--text-3);font-weight:400}
+.pick-word::after{content:"”";color:var(--text-3);font-weight:400}
+
+.toast-inline{
+  display:inline-flex;align-items:center;gap:6px;
+  font-size:12.5px;font-weight:500;color:var(--text-2);
+  animation:pickIn var(--t-2) var(--ease-out) both;
+}
+.toast-inline .i{color:var(--text-1)}
+
+/* 音频均衡器（播放中） */
+.eq{display:flex;align-items:flex-end;gap:2px;height:12px;margin-top:1px;flex:none}
+.eq i{width:2px;background:var(--text-2);border-radius:1px;height:3px;animation:eq .9s var(--ease) infinite}
+.eq i:nth-child(2){animation-delay:.15s}
+.eq i:nth-child(3){animation-delay:.3s}
+@keyframes eq{0%,100%{height:3px}50%{height:11px}}
+
+/* ============================================================
+   四六级答题
+   ============================================================ */
+.rail{display:flex;align-items:center;gap:0;padding:2px 0}
+.rail-step{
+  display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text-3);
+  transition:color var(--t-2) var(--ease);white-space:nowrap;
+}
+.rail-dot{
+  width:16px;height:16px;border-radius:99px;flex:none;
+  border:1.5px solid var(--line-2);display:grid;place-items:center;
+  font-size:9px;font-weight:700;color:var(--text-3);
+  transition:all var(--t-2) var(--ease);
+}
+.rail-line{flex:1;height:1.5px;background:var(--line);margin:0 10px;border-radius:2px;position:relative;overflow:hidden;min-width:16px}
+.rail-line::after{content:"";position:absolute;inset:0;background:var(--text-1);transform:scaleX(0);transform-origin:left;transition:transform var(--t-4) var(--ease-out)}
+.rail-step.done{color:var(--text-2)}
+.rail-step.done .rail-dot{border-color:var(--text-2);color:var(--text-2)}
+.rail-step.done+.rail-line::after{transform:scaleX(1)}
+.rail-step.active{color:var(--text-1);font-weight:600}
+.rail-step.active .rail-dot{border-color:var(--ink);background:var(--ink);color:var(--on-ink);transform:scale(1.06)}
+.rail-step.active+.rail-line::after{transform:scaleX(.45)}
+
+.meta{display:flex;align-items:center;gap:14px;font-size:12px;color:var(--text-3);flex-wrap:wrap}
+.meta b{color:var(--text-2);font-weight:600;font-variant-numeric:tabular-nums}
+.meta b.strong{color:var(--text-1)}
+.meta-sep{width:1px;height:10px;background:var(--line)}
+
+.q-list{display:flex;flex-direction:column;gap:10px}
+.q{
+  position:relative;border:1px solid var(--line);border-radius:var(--r-xl);
+  background:var(--surface);padding:15px 16px 15px 18px;
+  transition:border-color var(--t-2) var(--ease), background var(--t-2) var(--ease), box-shadow var(--t-2) var(--ease);
+}
+.q::before{
+  content:"";position:absolute;left:0;top:16px;bottom:16px;width:2.5px;border-radius:3px;
+  background:transparent;transition:background var(--t-2) var(--ease);
+}
+.q.active{border-color:var(--line-2);background:var(--surface-2);box-shadow:var(--shadow-1)}
+.q.active::before{background:var(--ink)}
+.q.done{background:var(--surface)}
+
+.q-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:2px}
+.q-no{
+  font-size:12.5px;font-weight:600;color:var(--text-1);
+  font-variant-numeric:tabular-nums;
+}
+.q-no span{color:var(--text-3);font-weight:500}
+.q-tools{margin-left:auto;display:flex;gap:4px;align-items:center}
+
+/* 环形倒计时 */
+.ring{position:relative;width:30px;height:30px;flex:none}
+.ring svg{transform:rotate(-90deg);display:block}
+.ring circle{fill:none;stroke-width:2.5;stroke-linecap:round}
+.ring .rb{stroke:var(--line-2)}
+.ring .rf{stroke:var(--text-1);transition:stroke-dashoffset 1s linear}
+.ring-num{
+  position:absolute;inset:0;display:grid;place-items:center;
+  font-size:10.5px;font-weight:700;color:var(--text-1);
+  font-variant-numeric:tabular-nums;
+}
+
+.stem{
+  font-size:14px;line-height:1.7;color:var(--text-2);
+  padding:10px 12px;border-radius:var(--r-md);background:var(--surface-2);
+  border:1px dashed var(--line-2);margin:8px 0 10px;
+  animation:zhIn var(--t-2) var(--ease-out) both;
+}
+.stem .zh-inline{color:var(--text-3)}
+.stem-hidden{
+  font-size:12.5px;color:var(--text-3);
+  display:flex;align-items:center;gap:7px;padding:8px 0 4px;
+}
+
+.opts{display:flex;flex-direction:column;gap:5px}
+.opt{
+  position:relative;display:flex;align-items:flex-start;gap:10px;width:100%;
+  appearance:none;font:inherit;text-align:left;cursor:pointer;
+  padding:9px 12px 9px 14px;border-radius:var(--r-md);
+  border:1px solid var(--line);background:var(--surface);color:var(--text-1);
+  transition:background var(--t-1) var(--ease), border-color var(--t-1) var(--ease), transform var(--t-1) var(--ease);
+}
+.opt::before{
+  content:"";position:absolute;left:0;top:8px;bottom:8px;width:2.5px;border-radius:3px;
+  background:transparent;transition:background var(--t-2) var(--ease);
+}
+.opt:hover:not(:disabled){background:var(--surface-2);border-color:var(--line-2)}
+.opt:active:not(:disabled){transform:scale(.994)}
+.opt-key{
+  flex:none;font-size:12.5px;font-weight:700;color:var(--text-3);
+  width:14px;font-variant-numeric:tabular-nums;
+}
+.opt-text{flex:1;min-width:0;font-size:13.5px;line-height:1.6}
+.opt-tag{
+  flex:none;font-size:11px;font-weight:600;letter-spacing:.02em;
+  padding:1px 6px;border-radius:99px;margin-top:1px;
+  opacity:0;transform:translateX(-3px);
+  transition:opacity var(--t-2) var(--ease), transform var(--t-2) var(--ease-out);
+}
+.opt:disabled{cursor:default}
+.opt[data-state="correct"]{background:var(--ok-wash);border-color:var(--ok-line)}
+.opt[data-state="correct"]::before{background:var(--ok)}
+.opt[data-state="correct"] .opt-key{color:var(--ok)}
+.opt[data-state="correct"] .opt-tag{opacity:1;transform:none;background:var(--ok);color:var(--bg)}
+.opt[data-state="wrong"]{background:var(--danger-wash);border-color:var(--danger-line)}
+.opt[data-state="wrong"]::before{background:var(--danger)}
+.opt[data-state="wrong"] .opt-key{color:var(--danger)}
+.opt[data-state="wrong"] .opt-tag{opacity:1;transform:none;background:var(--danger);color:var(--bg)}
+.opt[data-state="picked"]{background:var(--surface-2);border-color:var(--line-2)}
+.opt[data-state="picked"]::before{background:var(--text-1)}
+.opt[data-state="picked"] .opt-tag{opacity:1;transform:none;background:var(--ink);color:var(--on-ink)}
+
+.exp{
+  font-size:12.5px;line-height:1.7;color:var(--text-2);
+  padding:10px 12px;border-radius:var(--r-md);background:var(--surface-2);
+  margin-top:10px;
+  animation:pickIn var(--t-3) var(--ease-out) both;
+}
+.exp-h{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text-3);margin-bottom:5px}
+
+.score-row{
+  display:flex;align-items:center;gap:10px;
+  padding:6px 0;font-size:12.5px;color:var(--text-2);
+  border-bottom:1px solid var(--line);
+}
+.score-row:last-child{border-bottom:0}
+.score-row .sr-no{font-variant-numeric:tabular-nums;width:52px;flex:none;color:var(--text-3)}
+.score-row .sr-you{width:74px;flex:none}
+.score-row .sr-right{width:74px;flex:none;font-weight:600;color:var(--text-1)}
+.score-bar{flex:1;height:3px;border-radius:99px;background:var(--surface-3);overflow:hidden}
+.score-bar i{display:block;height:100%;border-radius:99px;background:var(--text-1);transition:width var(--t-4) var(--ease-out)}
+
+.big-score{
+  display:flex;align-items:baseline;gap:8px;
+  font-variant-numeric:tabular-nums;
+}
+.big-score .n{font-size:30px;font-weight:600;letter-spacing:-.02em;line-height:1}
+.big-score .d{font-size:15px;color:var(--text-3)}
+
+/* ============================================================
+   单词本
+   ============================================================ */
+.list{display:flex;flex-direction:column;gap:6px}
+.row-word{
+  display:flex;gap:13px;align-items:flex-start;
+  padding:13px 14px;border-radius:var(--r-lg);
+  border:1px solid var(--line);background:var(--surface);
+  transition:border-color var(--t-2) var(--ease), background var(--t-2) var(--ease), transform var(--t-2) var(--ease);
+  animation:itemIn var(--t-3) var(--ease-out) both;
+}
+.row-word:hover{border-color:var(--line-2);background:var(--surface-2)}
+.row-word-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.word-term{font-size:16.5px;font-weight:600;letter-spacing:-.005em;color:var(--text-1)}
+.phon{font-size:12.5px;color:var(--text-3);font-family:ui-monospace,"Cascadia Mono",Consolas,monospace}
+.mean{font-size:13.5px;color:var(--text-1);margin-top:3px}
+.ex{
+  font-size:12.5px;color:var(--text-2);margin-top:6px;padding-left:10px;
+  border-left:2px solid var(--line-2);line-height:1.65;
+}
+.ex-zh{font-size:12px;color:var(--text-3);margin-top:2px;padding-left:12px}
+.row-acts{display:flex;flex-direction:column;gap:2px;align-items:flex-end;flex:none}
+.act-text{
+  appearance:none;border:0;background:none;cursor:pointer;font:inherit;
+  font-size:12px;color:var(--text-3);padding:3px 7px;border-radius:var(--r-xs);
+  white-space:nowrap;
+  transition:all var(--t-1) var(--ease);
+}
+.act-text:hover{color:var(--text-1);background:var(--surface-3)}
+.act-del:hover{color:var(--danger);background:var(--danger-wash)}
+
+/* 空状态 */
+.empty{
+  display:flex;flex-direction:column;align-items:center;gap:10px;
+  padding:56px 20px;text-align:center;color:var(--text-3);
+}
+.empty-ico{
+  width:44px;height:44px;border-radius:14px;border:1px dashed var(--line-2);
+  display:grid;place-items:center;color:var(--text-3);margin-bottom:2px;
+}
+.empty-t{font-size:13.5px;color:var(--text-2);font-weight:500}
+.empty-d{font-size:12.5px;color:var(--text-3);max-width:280px;line-height:1.7}
+
+/* ============================================================
+   背单词卡（3D 翻面）
+   ============================================================ */
+.study-head{display:flex;align-items:center;gap:12px}
+.study-prog{flex:1}
+.study-prog .bar{height:3px}
+.study-prog .bar::after{display:none}
+.study-prog i{display:block;height:100%;background:var(--text-1);border-radius:99px;transition:width var(--t-4) var(--ease-out)}
+.study-count{font-size:12.5px;color:var(--text-3);font-variant-numeric:tabular-nums;flex:none}
+
+.flip{perspective:1600px;height:330px}
+.flip-in{
+  position:relative;width:100%;height:100%;transform-style:preserve-3d;
+  transition:transform var(--t-4) var(--ease-out);
+}
+.flip.back .flip-in{transform:rotateY(180deg)}
+.face{
+  position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;
+  border-radius:var(--r-2xl);border:1px solid var(--line);background:var(--surface);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:32px;text-align:center;gap:14px;overflow:hidden;
+  transition:background var(--t-2) var(--ease), border-color var(--t-2) var(--ease);
+}
+.face-back{transform:rotateY(180deg);background:var(--surface-2)}
+.face-word{
+  font-size:38px;font-weight:600;letter-spacing:-.02em;line-height:1.15;color:var(--text-1);
+}
+.face-phon{font-size:14px;color:var(--text-3);font-family:ui-monospace,"Cascadia Mono",Consolas,monospace}
+.face-hint{
+  position:absolute;bottom:20px;left:0;right:0;text-align:center;
+  font-size:11.5px;color:var(--text-3);letter-spacing:.04em;
+}
+.face-mean{font-size:20px;font-weight:500;color:var(--text-1);line-height:1.5}
+.face-ex{font-size:13px;color:var(--text-2);line-height:1.7;max-width:400px}
+.face-ex-zh{font-size:12.5px;color:var(--text-3);line-height:1.65;max-width:400px}
+
+.study-acts{display:flex;gap:10px}
+.study-acts .btn{flex:1;height:44px;border-radius:var(--r-lg)}
+.btn-ok{background:var(--ink);color:var(--on-ink);border-color:var(--ink)}
+.btn-ok:hover{background:var(--ink-hover);border-color:var(--ink-hover)}
+
+/* ============================================================
+   历史
+   ============================================================ */
+.hist{
+  border:1px solid var(--line);border-radius:var(--r-lg);background:var(--surface);
+  overflow:hidden;
+  transition:border-color var(--t-2) var(--ease), background var(--t-2) var(--ease);
+  animation:itemIn var(--t-3) var(--ease-out) both;
+}
+.hist.open{border-color:var(--line-2)}
+.hist-head{display:flex;align-items:center;gap:10px;padding:4px 6px 4px 4px}
+.hist-main{
+  flex:1;min-width:0;appearance:none;border:0;background:none;cursor:pointer;font:inherit;
+  text-align:left;padding:11px 10px;border-radius:var(--r-md);
+  display:flex;align-items:center;gap:11px;
+  transition:background var(--t-1) var(--ease);
+}
+.hist-main:hover{background:var(--surface-2)}
+.hist-chev{color:var(--text-3);flex:none;transition:transform var(--t-2) var(--ease)}
+.hist.open .hist-chev{transform:rotate(90deg)}
+.hist-txt{flex:1;min-width:0}
+.hist-title{
+  font-size:13.5px;font-weight:600;color:var(--text-1);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.hist-sub{
+  font-size:11.5px;color:var(--text-3);margin-top:2px;
+  display:flex;align-items:center;gap:7px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.tag{
+  display:inline-flex;align-items:center;gap:4px;flex:none;
+  font-size:10.5px;font-weight:600;letter-spacing:.03em;
+  padding:1.5px 7px;border-radius:99px;
+  background:var(--surface-2);color:var(--text-2);border:1px solid var(--line);
+}
+[data-theme="dark"] .tag{background:var(--surface-3)}
+.hist-body{
+  border-top:1px solid var(--line);padding:14px;
+  animation:zhIn var(--t-3) var(--ease-out) both;
+}
+
+/* ============================================================
+   设置（行式布局，参照系统偏好设置）
+   ============================================================ */
+.grp{display:flex;flex-direction:column;gap:0}
+.grp-card{
+  border:1px solid var(--line);border-radius:var(--r-xl);background:var(--surface);
+  overflow:hidden;
+}
+.set-row{
+  display:flex;gap:16px;align-items:center;
+  padding:14px 16px;
+  border-bottom:1px solid var(--line);
+  transition:background var(--t-2) var(--ease);
+}
+.set-row:last-child{border-bottom:0}
+.set-row.stack{align-items:flex-start;flex-direction:column;gap:9px}
+.set-label{flex:none;width:132px;font-size:13px;color:var(--text-1)}
+.set-hint{font-size:11.5px;color:var(--text-3);margin-top:3px;line-height:1.6}
+.set-ctrl{flex:1;min-width:0;display:flex;gap:8px;align-items:center}
+.set-ctrl .input{flex:1}
+.set-head{
+  padding:14px 16px 12px;border-bottom:1px solid var(--line);
+  background:var(--surface-2);
+  display:flex;align-items:center;gap:8px;
+}
+
+.page-title{font-size:19px;font-weight:600;letter-spacing:-.01em}
+.page-sub{font-size:12.5px;color:var(--text-3);margin-top:3px}
+
+/* ============================================================
+   右下角预览控制面板
+   ============================================================ */
+.inspector{
+  position:fixed;right:18px;bottom:18px;z-index:90;
+  width:276px;max-width:calc(100vw - 36px);
+  background:color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter:blur(16px) saturate(1.3);-webkit-backdrop-filter:blur(16px) saturate(1.3);
+  border:1px solid var(--line);border-radius:var(--r-xl);
+  box-shadow:var(--shadow-3);
+  padding:13px 14px 14px;
+  transition:background var(--t-3) var(--ease), border-color var(--t-3) var(--ease);
+}
+.ins-title{
+  font-size:10.5px;font-weight:600;letter-spacing:.11em;text-transform:uppercase;
+  color:var(--text-3);margin-bottom:11px;
+  display:flex;align-items:center;gap:7px;
+}
+.ins-title::after{content:"";flex:1;height:1px;background:var(--line)}
+.ins-fold{
+  appearance:none;border:0;background:none;cursor:pointer;color:var(--text-3);
+  width:18px;height:18px;border-radius:5px;display:grid;place-items:center;flex:none;
+  order:3;transition:background var(--t-1) var(--ease), color var(--t-1) var(--ease), transform var(--t-2) var(--ease);
+}
+.ins-fold:hover{background:var(--surface-3);color:var(--text-1)}
+.ins-fold::after{content:"";flex:none}
+.ins-title .i{transition:transform var(--t-2) var(--ease)}
+body[data-ins="fold"] .ins-title .i{transform:rotate(-90deg)}
+body[data-ins="fold"] .ins-body{display:none}
+body[data-ins="fold"] .ins-title{margin-bottom:0}
+.ins-row{display:flex;align-items:center;gap:9px;padding:5px 0}
+.ins-row-t{flex:1;font-size:12.5px;color:var(--text-2)}
+.ins-legend{
+  margin-top:10px;padding-top:10px;border-top:1px solid var(--line);
+  max-height:196px;overflow:auto;
+}
+.ins-legend-t{
+  font-size:10.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--text-3);margin-bottom:7px;
+}
+.ins-legend ol{list-style:none;display:flex;flex-direction:column;gap:5px;counter-reset:lg}
+.ins-legend li{
+  display:flex;gap:7px;font-size:11.5px;line-height:1.5;color:var(--text-2);
+  counter-increment:lg;
+}
+.ins-legend li::before{
+  content:counter(lg);
+  flex:none;width:15px;height:15px;border-radius:99px;
+  background:var(--text-1);color:var(--bg);
+  font-size:9.5px;font-weight:700;
+  display:grid;place-items:center;margin-top:1px;
+}
+.ins-foot{
+  margin-top:11px;padding-top:10px;border-top:1px solid var(--line);
+  font-size:11px;color:var(--text-3);line-height:1.65;
+}
+
+/* ============================================================
+   改动标注
+   ============================================================ */
+.anno{
+  position:absolute;z-index:70;
+  width:18px;height:18px;border-radius:99px;
+  background:var(--text-1);color:var(--bg);
+  font-size:10.5px;font-weight:700;font-style:normal;
+  display:none;place-items:center;
+  font-variant-numeric:tabular-nums;
+  box-shadow:0 0 0 2.5px var(--bg);
+  pointer-events:none;
+  animation:annoIn var(--t-3) var(--ease-out) both;
+}
+body[data-anno="on"] .anno{display:grid}
+@keyframes annoIn{from{opacity:0;transform:scale(.6)}to{opacity:1;transform:none}}
+.anno-rel{position:relative}
+.anno.tl{top:-7px;left:-7px}
+.anno.tr{top:-7px;right:-7px}
+.anno.bl{bottom:-7px;left:-7px}
+.anno.br{bottom:-7px;right:-7px}
+.anno.mr{top:50%;right:-9px;transform:translateY(-50%)}
+.anno.ml{top:50%;left:-9px;transform:translateY(-50%)}
+/* 容器带 overflow:hidden 时（如设置页分组卡片）标号必须放内部，否则会被裁掉 */
+.anno.inside{top:9px;right:9px}
+
+/* 截图 / 评审用：一键关掉全部动效与过渡，让首帧就是终态 */
+body[data-noanim="1"] *,
+body[data-noanim="1"] *::before,
+body[data-noanim="1"] *::after{
+  animation:none!important;transition:none!important;
+}
+/* 首帧定主题时不做过渡，避免「暗 → 亮」闪一下 */
+html.no-anim,html.no-anim *{transition:none!important}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}
+@media (max-width:720px){
+  .inspector{left:18px;right:18px;width:auto}
+  .brand-sub,.brand-name{display:none}
+  .brand-name{display:none}
+  .set-row{flex-direction:column;align-items:stretch;gap:8px}
+  .set-label{width:auto}
+}
+</style>
+</head>
+<body data-anno="off">
+
+<!-- ============ SVG 图标精灵 ============ -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-mark" viewBox="0 0 24 24"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h8A2.5 2.5 0 0 1 17 6.5v3A2.5 2.5 0 0 1 14.5 12H9l-3 2.5V12h-.5A1.5 1.5 0 0 1 4 10.5z"/><circle cx="17.2" cy="15.4" r="3.6"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.8v14.4L19 12z" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-play-o" viewBox="0 0 24 24"><path d="M8 5.5v13L18.5 12z"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11" rx="1.6" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-shuffle" viewBox="0 0 24 24"><path d="M17 3.5 20.5 7 17 10.5"/><path d="M3.5 7h4.2c1.3 0 2.5.6 3.2 1.7l3.2 4.6c.7 1.1 1.9 1.7 3.2 1.7h3.2"/><path d="M17 13.5 20.5 17 17 20.5"/><path d="M3.5 17h4.2c1.3 0 2.5-.6 3.2-1.7"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3.2 13.7 9l5.8 1.7-5.8 1.8L12 18.3l-1.7-5.8L4.5 10.7 10.3 9z"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.6v2.1M12 19.3v2.1M4.2 4.2l1.5 1.5M18.3 18.3l1.5 1.5M2.6 12h2.1M19.3 12h2.1M4.2 19.8l1.5-1.5M18.3 5.7l1.5-1.5"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.6A8.4 8.4 0 0 1 9.4 4a8.6 8.6 0 1 0 10.6 10.6z"/></symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24"><path d="m6 9.5 6 6 6-6"/></symbol>
+    <symbol id="i-chev-r" viewBox="0 0 24 24"><path d="m9.5 5.5 6.5 6.5-6.5 6.5"/></symbol>
+    <symbol id="i-chev-l" viewBox="0 0 24 24"><path d="m14.5 5.5-6.5 6.5 6.5 6.5"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m4.8 12.6 4.8 4.8L19.2 6.8"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M6.2 6.2 17.8 17.8M17.8 6.2 6.2 17.8"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5.2v13.6M5.2 12h13.6"/></symbol>
+    <symbol id="i-loop" viewBox="0 0 24 24"><path d="M4 9.5A5.5 5.5 0 0 1 9.5 4h8"/><path d="m14.5 1.5 3 2.5-3 2.5"/><path d="M20 14.5A5.5 5.5 0 0 1 14.5 20h-8"/><path d="m9.5 22.5-3-2.5 3-2.5"/></symbol>
+    <symbol id="i-speed" viewBox="0 0 24 24"><path d="M3.6 17a9 9 0 1 1 16.8 0"/><path d="M12 12.5 16 8.4"/><circle cx="12" cy="17" r="1.3" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-trs" viewBox="0 0 24 24"><path d="M3.6 6.2h8.2M7.7 4.4v1.8c0 4-1.7 7.2-4.1 9.1"/><path d="M5.4 11.6c.9 2.2 2.6 4 4.6 5"/><path d="M12.6 20l4-10 4 10"/><path d="M14.1 16.6h5"/></symbol>
+    <symbol id="i-vol" viewBox="0 0 24 24"><path d="M4.5 9.5h3.2L12 5.6v12.8L7.7 14.5H4.5z"/><path d="M15.6 9.4a3.6 3.6 0 0 1 0 5.2"/><path d="M18.2 7a7 7 0 0 1 0 10"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.6 6.6h14.8"/><path d="M9.4 6.6V4.9c0-.7.6-1.3 1.3-1.3h2.6c.7 0 1.3.6 1.3 1.3v1.7"/><path d="M6.6 6.6 7.5 19c.05.7.6 1.2 1.3 1.2h6.4c.7 0 1.25-.5 1.3-1.2l.9-12.4"/></symbol>
+    <symbol id="i-undo" viewBox="0 0 24 24"><path d="M4.4 9.6h9.2a5.6 5.6 0 0 1 0 11.2H8.6"/><path d="m8.2 5.4-3.8 4.2 3.8 4.2"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6"/><path d="M12 11.2v5.2"/><circle cx="12" cy="7.9" r=".9" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3.4 21.4 20H2.6z"/><path d="M12 9.6v4.6"/><circle cx="12" cy="17.2" r=".95" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6"/><path d="M12 7.2V12l3.4 2.1"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M4.4 5.2c0-.9.7-1.6 1.6-1.6h4.4c.9 0 1.6.7 1.6 1.6v14c0-.9-.7-1.6-1.6-1.6H6c-.9 0-1.6.7-1.6 1.6z"/><path d="M19.6 5.2c0-.9-.7-1.6-1.6-1.6h-4.4c-.9 0-1.6.7-1.6 1.6v14c0-.9.7-1.6 1.6-1.6h4.4c.9 0 1.6.7 1.6 1.6z"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 2.8 8.6 4.4L12 11.6 3.4 7.2z"/><path d="m3.4 12.2 8.6 4.4 8.6-4.4"/><path d="m3.4 16.8 8.6 4.4 8.6-4.4"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4.4 7.2h9M17.2 7.2h2.4"/><circle cx="15.2" cy="7.2" r="2"/><path d="M4.4 16.8h2.4M10.4 16.8h9.2"/><circle cx="8.4" cy="16.8" r="2"/></symbol>
+    <symbol id="i-text" viewBox="0 0 24 24"><path d="M4.6 6.4V4.6h14.8v1.8"/><path d="M12 4.6v14.8"/><path d="M8.8 19.4h6.4"/></symbol>
+  </defs>
+</svg>
+
+<div class="shell">
+
+  <!-- ============================ 顶栏 ============================ -->
+  <header class="appbar">
+    <div class="brand">
+      <span class="brand-mark"><svg><use href="#i-mark"/></svg></span>
+      <span class="brand-name">Saltalk</span>
+      <span class="brand-sub">Listening</span>
+    </div>
+
+    <nav class="nav" role="tablist" aria-label="主导航" id="nav">
+      <span class="anno ml">1</span>
+      <button class="nav-btn" role="tab" aria-selected="true"  data-go="practice">练习</button>
+      <button class="nav-btn" role="tab" aria-selected="false" data-go="words">单词本</button>
+      <button class="nav-btn" role="tab" aria-selected="false" data-go="history">历史</button>
+      <button class="nav-btn" role="tab" aria-selected="false" data-go="settings">设置</button>
+      <span class="nav-ink" id="navInk"></span>
+    </nav>
+
+    <span class="appbar-sep"></span>
+
+    <button class="theme-sw" id="themeSw" aria-label="切换主题" title="切换亮色 / 暗色">
+      <span class="theme-knob">
+        <svg class="i" id="themeIco"><use href="#i-moon"/></svg>
+      </span>
+    </button>
+  </header>
+
+  <main class="main">
+
+  <!-- ==================================================================
+       练习
+       ================================================================== -->
+  <section class="view on" data-view="practice">
+    <div class="wrap">
+      <div class="anno-rel">
+        <span class="anno tl">2</span>
+        <div class="toolbar" id="toolbar">
+          <!-- 输入框：随机按钮收进内部，工具栏从 4 个同级控件降到 3 个 -->
+          <div class="field">
+            <input class="input" id="topic" value="酒店入住" placeholder="输入主题" />
+            <button class="icon-btn field-suffix" id="randomBtn" title="随机换一个主题">
+              <svg class="i"><use href="#i-shuffle"/></svg>
+            </button>
+          </div>
+
+          <!-- 难度体系 + 等级：折叠成一个下拉，展开后按体系分组 -->
+          <div class="select anno-rel" id="levelSel">
+            <span class="anno bl">3</span>
+            <button class="select-btn" aria-haspopup="listbox" aria-expanded="false">
+              <span class="select-val" id="levelVal">CEFR B1</span>
+              <svg class="i i-sm"><use href="#i-chev"/></svg>
+            </button>
+            <div class="menu" role="listbox" id="levelMenu"></div>
+          </div>
+
+          <button class="btn btn-primary" id="genBtn">
+            <svg class="i"><use href="#i-spark"/></svg>
+            <span id="genLabel">生成对话</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 生成中：细进度条 + 计数，替换原来孤零零的转圈 -->
+      <div class="card card-pad" id="busyCard" hidden>
+        <div class="busy">
+          <span class="spin"></span>
+          <span class="busy-label" id="busyLabel">正在生成对话…</span>
+          <span class="busy-count" id="busyCount"></span>
+        </div>
+        <div class="bar" style="margin-top:12px"></div>
+      </div>
+
+      <!-- 错误态 -->
+      <div id="errBox" hidden></div>
+
+      <!-- 内容区 -->
+      <div id="practiceBody"></div>
+    </div>
+  </section>
+
+  <!-- ==================================================================
+       单词本
+       ================================================================== -->
+  <section class="view" data-view="words">
+    <div class="wrap" id="wordsRoot"></div>
+  </section>
+
+  <!-- ==================================================================
+       历史
+       ================================================================== -->
+  <section class="view" data-view="history">
+    <div class="wrap" id="historyRoot"></div>
+  </section>
+
+  <!-- ==================================================================
+       设置
+       ================================================================== -->
+  <section class="view" data-view="settings">
+    <div class="wrap wrap-mid" id="settingsRoot"></div>
+  </section>
+
+  </main>
+</div>
+
+<!-- ============================ 预览控制面板 ============================ -->
+<aside class="inspector" id="inspector">
+  <div class="ins-title">
+    预览控制
+    <button class="ins-fold" id="insFold" title="收起 / 展开面板"><svg class="i i-sm"><use href="#i-chev"/></svg></button>
+  </div>
+
+  <div class="ins-body">
+    <div class="ins-row">
+      <span class="ins-row-t">主题</span>
+      <div class="seg" id="segTheme" style="flex:none">
+        <span class="seg-ink"></span>
+        <button class="seg-btn" data-theme-set="light" aria-selected="false">亮</button>
+        <button class="seg-btn" data-theme-set="dark" aria-selected="true">暗</button>
+      </div>
+    </div>
+
+    <div class="ins-row">
+      <span class="ins-row-t">语义色<br /><small style="font-size:10.5px;color:var(--text-3)">错误 / 正确 / 警告</small></span>
+      <button class="chip" id="semSw" aria-pressed="true" style="flex:none">
+        <span class="chip-dot"></span>开
+      </button>
+    </div>
+
+    <div class="ins-row">
+      <span class="ins-row-t">改动标注</span>
+      <button class="chip" id="annoSw" aria-pressed="false" style="flex:none">
+        <span class="chip-dot"></span>关
+      </button>
+    </div>
+
+    <div class="ins-legend" id="insLegend" hidden>
+      <div class="ins-legend-t">改动清单</div>
+      <ol>
+        <li>顶栏：品牌标记 + 下划线式导航（滑块指示器）+ 圆形主题开关</li>
+        <li>工具栏：随机按钮收进输入框内部，四个同级控件降到三个，主次分明</li>
+        <li>难度体系与等级合并为一个分组下拉，带勾选态</li>
+        <li>字幕改为「一整份」：单容器 + 发丝分隔线，播放中的句子左侧竖条呼吸</li>
+        <li>四六级播放流程做成四段进度轨，当前阶段可见、已过阶段收灰</li>
+        <li>成绩明细：大分数 + 逐题对比条，一眼看出哪题错了</li>
+        <li>空状态：虚线框 + 图标 + 一句话引导，不再是光秃秃一行灰字</li>
+        <li>分段控件（滑动指示器）替代并列的边框按钮</li>
+        <li>设置改为「分组卡片 + 行式布局」，参照系统偏好设置的信息密度</li>
+        <li>API Key：输入分区、可切换明文、标注数据目录</li>
+        <li>危险操作就地二次确认（展开成确认条），不弹系统对话框</li>
+      </ol>
+    </div>
+
+    <div class="ins-foot">原型的交互都可以真点：切体系会换播放器，四六级能走完整答题流程，点单词能加进单词本，背单词卡能翻面。键盘 1–4 切页面，空格翻卡片。</div>
+  </div>
+</aside>
+
+<script>
+/* ============================================================
+   数据（与 src / shared 中的真实结构对应）
+   ============================================================ */
+const STATE = {
+  tab: 'practice',
+  theme: 'dark',
+  semantic: 'on',
+  anno: 'off',
+  system: 'cefr',        // cefr | ielts | cet
+  level: 'B1',
+  generated: true,
+  busy: false,
+  topic: '酒店入住'
+};
+
+/* —— CEFR / 雅思：双人对话 —— */
+const DIALOGUE = [
+  { s:'A', en:'Hi, I have a reservation under the name Chen.', zh:'你好，我用陈这个名字订了房。' },
+  { s:'B', en:"Let me check. Yes — a double room for three nights.", zh:'我查一下。有的——一间双人房，住三晚。' },
+  { s:'A', en:"That's right. Is breakfast included?", zh:'没错。含早餐吗？' },
+  { s:'B', en:"It is, and it's served from seven to ten on the second floor.", zh:'含的，二楼早上七点到十点供应。' },
+  { s:'A', en:'Great. Could I also ask for a late check-out?', zh:'太好了。我还能申请延迟退房吗？' },
+  { s:'B', en:"We can offer one o'clock, but after that there's a half-day charge.", zh:'可以给你延到一点，再往后就要收半天房费。' },
+  { s:'A', en:"One o'clock works. One more thing — is the airport shuttle still running?", zh:'一点可以。还有件事——机场班车还运行吗？' },
+  { s:'B', en:'It runs every thirty minutes, and you can book it right at this desk.', zh:'每三十分钟一班，你可以直接在这个前台预订。' }
+];
+
+/* —— 四六级：一段长对话 + 4 题 —— */
+const CET = {
+  intro:'Questions 1 to 4 are based on the conversation you have just heard.',
+  dialogue:[
+    { s:'A', en:'Excuse me, Professor Lewis, do you have a minute? I am having trouble with my course selection.', zh:'打扰一下，刘易斯教授，您有空吗？我在选课上遇到了麻烦。' },
+    { s:'B', en:'Of course, take a seat. What seems to be the problem?', zh:'当然，坐吧。出什么问题了？' },
+    { s:'A', en:'I want to take your advanced statistics course, but the prerequisite is Introduction to Data Analysis, and I have not taken it.', zh:'我想选您的高级统计学，但先修课程是《数据分析导论》，我还没修。' },
+    { s:'B', en:'Then you would need a waiver. We usually grant one if your maths grades are strong. How did you do last term?', zh:'那你需要一份豁免。如果你的数学成绩够好，我们通常会批。你上学期考得怎么样？' },
+    { s:'A', en:'I got an A minus in calculus, and a B plus in linear algebra.', zh:'我微积分拿了 A－，线性代数 B＋。' },
+    { s:'B', en:'That should be enough. Fill in this form and bring it to my office by Friday, and I will send it to the registrar.', zh:'那应该够了。把这张表填好，周五之前送到我办公室，我会转给教务。' },
+    { s:'A', en:'Thank you. And is the course full already? The online system says there are only two seats left.', zh:'谢谢。这门课已经满了吗？系统上显示只剩两个名额。' },
+    { s:'B', en:'There were three this morning, but the form guarantees you a place as long as it is in by Friday.', zh:'今天早上还有三个，但只要周五前交表，这个名额就给你留着。' },
+    { s:'A', en:'That is a relief. Should I also attend the first lecture on Monday?', zh:'那就放心了。周一的第一次课我也要去上吗？' },
+    { s:'B', en:'Yes, definitely. Even if the waiver has not been processed yet, you should not miss the first session.', zh:'当然要去。就算豁免还没批下来，第一次课也不该缺席。' }
+  ],
+  questions:[
+    {
+      stem:'What is the man\u2019s problem?',
+      stemZh:'男士遇到了什么问题？',
+      options:[
+        'He cannot register for a course he wants to take.',
+        'He has failed a required mathematics course.',
+        'He missed the deadline for course selection.',
+        'He does not get along with his academic adviser.'
+      ],
+      answer:0,
+      exp:'原文开头男士说 "I am having trouble with my course selection"，随后说明想选高级统计学但没修先修课 —— 属于「想选的课选不上」，A 正确。B 与原文相反（他的数学成绩不错）；C、D 原文均未提及，是典型的「出现过相关词但答非所问」型干扰项。'
+    },
+    {
+      stem:'What grade did the man receive in calculus last term?',
+      stemZh:'男士上学期微积分得了什么成绩？',
+      options:[
+        'A B plus.',
+        'An A minus.',
+        'A B minus.',
+        'An A.'
+      ],
+      answer:1,
+      exp:'男士原话 "I got an A minus in calculus, and a B plus in linear algebra" —— 微积分是 A－，线性代数是 B＋。A、D 混淆了两门课，C 把等级改了一档，都是细节偷换。'
+    },
+    {
+      stem:'What does the woman tell the man to do by Friday?',
+      stemZh:'女士让男士在周五前做什么？',
+      options:[
+        'Register for the course online.',
+        'Bring the form to her office.',
+        'Take a placement test.',
+        'Speak to the registrar in person.'
+      ],
+      answer:1,
+      exp:'女士说 "Fill in this form and bring it to my office by Friday" —— 送表到她办公室，B 正确。D 的 registrar 出现在原文，但是由女士去转交，不是让男士本人去找，属于偷换主体。'
+    },
+    {
+      stem:'What does the woman say about the first lecture?',
+      stemZh:'关于第一次课，女士是怎么说的？',
+      options:[
+        'It has been moved to another building.',
+        'It will be recorded for absent students.',
+        'He should attend it even without the waiver.',
+        'It is optional for students waiting for a waiver.'
+      ],
+      answer:2,
+      exp:'女士说 "Even if the waiver has not been processed yet, you should not miss the first session" —— 即便豁免没批也要去，C 正确。A、B、D 原文均无依据。'
+    }
+  ]
+};
+
+/* —— 单词本 —— */
+const WORDS = [
+  { w:'reservation', p:'/ˌrezəˈveɪʃn/', m:'n. 预订；预约（的房间、座位等）',
+    ex:'I have a reservation under the name Chen.', exZh:'我用陈这个名字订了房。', st:'learning' },
+  { w:'shuttle', p:'/ˈʃʌtl/', m:'n. 班车；穿梭巴士　v. 往返运送',
+    ex:'Is the airport shuttle still running?', exZh:'机场班车还运行吗？', st:'learning' },
+  { w:'prerequisite', p:'/ˌpriːˈrekwəzɪt/', m:'n. 先修课程；前提条件　adj. 必备的',
+    ex:'The prerequisite is Introduction to Data Analysis.', exZh:'先修课程是《数据分析导论》。', st:'learning' },
+  { w:'waiver', p:'/ˈweɪvə(r)/', m:'n. 豁免；放弃（权利、要求）',
+    ex:'Then you would need a waiver.', exZh:'那你需要一份豁免。', st:'learning' },
+  { w:'registrar', p:'/ˌredʒɪˈstrɑː(r)/', m:'n. 教务主任；注册主管',
+    ex:'I will send it to the registrar.', exZh:'我会转给教务。', st:'learning' },
+  { w:'relief', p:'/rɪˈliːf/', m:'n. 宽慰；解脱；缓解',
+    ex:'That is a relief.', exZh:'那就放心了。', st:'mastered' }
+];
+
+/* —— 历史 —— */
+const HISTORY = [
+  { t:'酒店入住 · 延迟退房与机场班车', topic:'酒店入住', sys:'CEFR', lvl:'B1', at:'2026/9/18 12:41', n:8, mode:'conv' },
+  { t:'', topic:'选课咨询', sys:'四六级', lvl:'四级', at:'2026/9/18 11:07', n:10, mode:'exam', score:'3 / 4' },
+  { t:'', topic:'求职面试 · 期望薪资', sys:'雅思', lvl:'6.5', at:'2026/9/17 22:19', n:9, mode:'conv' },
+  { t:'', topic:'论文进度汇报', sys:'四六级', lvl:'六级', at:'2026/9/17 20:03', n:12, mode:'exam', score:'2 / 4' },
+  { t:'', topic:'租房咨询 · 押金与租期', sys:'雅思', lvl:'7.0', at:'2026/9/16 19:30', n:10, mode:'conv' }
+];
+
+/* ============================================================
+   工具
+   ============================================================ */
+const $ = (s, r) => (r || document).querySelector(s);
+const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+const ico = (n, cls) => `<svg class="i ${cls || ''}"><use href="#i-${n}"/></svg>`;
+
+const SYSTEMS = {
+  cefr: { label:'CEFR', levels:['A1','A2','B1','B2','C1','C2'], mode:'conv' },
+  ielts:{ label:'雅思', levels:['4.0','4.5','5.0','5.5','6.0','6.5','7.0','7.5','8.0','8.5','9.0'], mode:'conv' },
+  cet:  { label:'四六级', levels:['四级','六级'], mode:'exam' }
+};
+const LEVEL_DESC = {
+  cefr:{ A1:'入门：简单词汇、短句、慢速日常表达', A2:'基础：常用词汇、简单句、日常场景', B1:'中级：中等词汇、复合句、熟悉话题的流畅表达', B2:'中高级：较丰富词汇、复杂句、抽象话题', C1:'高级：丰富词汇、复杂句式、专业与抽象话题', C2:'精通：接近母语、习语、微妙语义' },
+  ielts:{ '4.0':'有限使用者（≈A2–B1）：仅熟悉场景能基本沟通','4.5':'有限使用者（≈B1）：表达复杂内容仍明显吃力','5.0':'基础使用者（≈B1）：能把握总体意思但错误较多','5.5':'基础使用者（≈B1+）：日常话题可顺畅交流','6.0':'合格使用者（≈B2）：能有效应对日常与校园话题','6.5':'合格使用者（≈B2）：出现成规模的同义替换与地道搭配','7.0':'良好使用者（≈B2+/C1）：语速自然、表达地道','7.5':'良好使用者（≈C1）：讨论抽象话题流畅','8.0':'优秀使用者（≈C1）：接近母语，信息需整合推理','8.5':'优秀使用者（≈C2）：母语水平，语义微妙','9.0':'专家使用者（≈C2）：完全准确流畅，含俚语与文化暗示' },
+  cet:{ '四级':'长对话 240–280 词 · 语速 120–140 词/分 · 4 道四选一','六级':'长对话 280–320 词 · 语速 140–160 词/分 · 4 道四选一' }
+};
+const levelText = () => STATE.system === 'cet'
+  ? STATE.level
+  : `${SYSTEMS[STATE.system].label} ${STATE.level}`;
+
+/* ============================================================
+   顶栏 / 导航
+   ============================================================ */
+const navInk = $('#navInk');
+function moveInk() {
+  const btn = $(`.nav-btn[data-go="${STATE.tab}"]`);
+  if (!btn) return;
+  navInk.style.width = btn.offsetWidth - 24 + 'px';
+  navInk.style.transform = `translateX(${btn.offsetLeft + 12}px)`;
+}
+function go(tab) {
+  STATE.tab = tab;
+  // 切页在真实应用里等于重新挂载组件：背单词卡是 WordBookView 的内部状态，
+  // 离开单词本再回来应该回到列表，而不是还停在卡片上。
+  if (tab !== 'words' && WSTATE.studying) {
+    WSTATE.studying = false;
+    WSTATE.queue = null;
+    WSTATE.total = 0;
+  }
+  if (tab === 'words') renderWords();
+  $$('.nav-btn').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.go === tab)));
+  $$('.view').forEach((v) => {
+    const on = v.dataset.view === tab;
+    v.classList.toggle('on', on);
+    if (on) { v.style.animation = 'none'; void v.offsetWidth; v.style.animation = ''; }
+  });
+  moveInk();
+}
+$$('.nav-btn').forEach((b) => b.addEventListener('click', () => go(b.dataset.go)));
+
+/* 主题 */
+function setTheme(t) {
+  STATE.theme = t;
+  document.documentElement.dataset.theme = t;
+  $('#themeIco').innerHTML = `<use href="#i-${t === 'dark' ? 'moon' : 'sun'}"/>`;
+  $$('#segTheme .seg-btn').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.themeSet === t)));
+  syncSeg('#segTheme');
+}
+$('#themeSw').addEventListener('click', () => setTheme(STATE.theme === 'dark' ? 'light' : 'dark'));
+$$('#segTheme .seg-btn').forEach((b) => b.addEventListener('click', () => setTheme(b.dataset.themeSet)));
+
+/* 分段控件指示器 */
+function syncSeg(root) {
+  const box = $(root);
+  if (!box) return;
+  const ink = $('.seg-ink', box);
+  const active = $('.seg-btn[aria-selected="true"]', box);
+  if (!active || !ink) return;
+  ink.style.width = active.offsetWidth + 'px';
+  ink.style.transform = `translateX(${active.offsetLeft - 3}px)`;
+}
+$$('.seg').forEach((s) => setTimeout(() => syncSeg('#' + s.id), 0));
+
+/* 语义色 / 标注开关 */
+function bindChip(id, key, apply) {
+  const el = $(id);
+  el.addEventListener('click', () => {
+    const next = el.getAttribute('aria-pressed') !== 'true';
+    el.setAttribute('aria-pressed', String(next));
+    el.lastChild.textContent = next ? '开' : '关';
+    apply(next);
+  });
+}
+bindChip('#semSw', 'semantic', (on) => { document.documentElement.dataset.semantic = on ? 'on' : 'off'; });
+bindChip('#annoSw', 'anno', (on) => {
+  document.body.dataset.anno = on ? 'on' : 'off';
+  $('#insLegend').hidden = !on;
+});
+
+/* 面板收起：审阅时避免遮住右下角内容 */
+$('#insFold').addEventListener('click', () => {
+  const fold = document.body.dataset.ins === 'fold';
+  document.body.dataset.ins = fold ? '' : 'fold';
+});
+
+/* 下拉 */
+function closeMenus() {
+  $$('.select.open').forEach((s) => {
+    s.classList.remove('open');
+    $('.select-btn', s).setAttribute('aria-expanded', 'false');
+  });
+}
+document.addEventListener('mousedown', (e) => {
+  if (!e.target.closest('.select')) closeMenus();
+  syncSeg('#segTheme');
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenus(); });
+
+/* ============================================================
+   练习页
+   ============================================================ */
+function buildLevelMenu() {
+  const menu = $('#levelMenu');
+  let html = '';
+  Object.keys(SYSTEMS).forEach((sys) => {
+    html += `<div class="menu-head">${SYSTEMS[sys].label}</div>`;
+    SYSTEMS[sys].levels.forEach((lv) => {
+      const sel = sys === STATE.system && lv === STATE.level;
+      html += `<button class="menu-item" role="option" data-sys="${sys}" data-lv="${lv}" aria-selected="${sel}">
+        <span class="mi-check">${ico('check','i-sm')}</span>
+        <span class="mi-label">${sys === 'cet' ? lv : SYSTEMS[sys].label + ' ' + lv}</span>
+      </button>`;
+    });
+    if (sys !== 'cet') html += `<div class="menu-sep"></div>`;
+  });
+  menu.innerHTML = html;
+  $$('.menu-item', menu).forEach((b) => b.addEventListener('click', () => {
+    const changedSystem = b.dataset.sys !== STATE.system;
+    STATE.system = b.dataset.sys;
+    STATE.level = b.dataset.lv;
+    closeMenus();
+    $('#levelVal').textContent = levelText();
+    $('#topic').placeholder = STATE.system === 'cet' ? '输入场景（如：图书馆借书、求职面试）' : '输入主题';
+    $('#genLabel').textContent = STATE.system === 'cet' ? '生成听力题' : '生成对话';
+    // 切体系 = 换播放器（对应真实逻辑：切换体系会清空旧内容）
+    if (changedSystem) STATE.generated = false;
+    buildLevelMenu();
+    renderPractice();
+    renderSettings();
+  }));
+}
+
+function sentHTML(d, i) {
+  const words = d.en.split(' ').map((w, k) => {
+    const clean = w.replace(/[^a-zA-Z'’-]/g, '');
+    return clean ? `<span class="w" data-w="${esc(clean)}" data-sent="${i}" data-k="${k}">${esc(w)}</span>` : `<span>${esc(w)}</span>`;
+  }).join('');
+  return `<article class="sent" data-seq="${i}">
+    <span class="badge badge-${d.s.toLowerCase()}">${d.s}</span>
+    <div class="sent-body">
+      <p class="en">${words}</p>
+      <div class="sent-extra" hidden></div>
+    </div>
+    <div class="sent-actions">
+      <span class="eq" hidden><i></i><i></i><i></i></span>
+      <button class="icon-btn sent-play" title="播放这一句">${ico('play-o')}</button>
+      <button class="icon-btn sent-zh" title="显示 / 隐藏中文">${ico('trs')}</button>
+    </div>
+  </article>`;
+}
+
+function dialoguePlayerHTML(list) {
+  return `<div class="player anno-rel">
+    <span class="anno tr">4</span>
+    <div class="player-bar">
+      <button class="btn btn-sm" id="playAll">${ico('play','i-sm')}<span>连续播放</span></button>
+      <button class="chip" id="slowChip" aria-pressed="false"><span class="chip-dot"></span>慢速</button>
+      <button class="chip" id="loopChip" aria-pressed="false"><span class="chip-dot"></span>单句循环</button>
+      <span class="grow"></span>
+      <span class="meta"><b>${list.length}</b> 句 · 约 ${Math.round(list.length * 4.2)} 秒</span>
+    </div>
+    <div class="sent-list stagger" id="sentList">${list.map(sentHTML).join('')}</div>
+  </div>`;
+}
+
+/* ---------- 四六级播放器 ---------- */
+const CETSTATE = {
+  phase:'idle', q:0, countdown:15, answers:[null,null,null,null],
+  revealed:new Set(), transcript:false, allowReplay:false, slow:false, timer:null
+};
+const RAIL_STEPS = [
+  { k:'intro', t:'考试说明' }, { k:'dialogue', t:'对话材料' },
+  { k:'stem', t:'朗读题干' }, { k:'answering', t:'作答' }
+];
+
+function railHTML() {
+  const order = ['idle','intro','dialogue','stem','answering','answered','finished'];
+  const cur = order.indexOf(CETSTATE.phase);
+  const stepIndex = { intro:0, dialogue:1, stem:2, answering:3, answered:3, finished:4 }[CETSTATE.phase];
+  return `<div class="rail">${RAIL_STEPS.map((s, i) => {
+    const st = CETSTATE.phase === 'finished' ? 'done'
+      : (stepIndex === undefined ? '' : i < stepIndex ? 'done' : i === stepIndex ? 'active' : '');
+    return `<span class="rail-step ${st}"><span class="rail-dot">${st === 'done' ? ico('check','i-xs') : i + 1}</span>${s.t}</span>` +
+      (i < RAIL_STEPS.length - 1 ? '<span class="rail-line"></span>' : '');
+  }).join('')}</div>`;
+}
+
+function ringHTML() {
+  const C = 2 * Math.PI * 12.5;
+  const off = C * (1 - CETSTATE.countdown / 15);
+  return `<span class="ring">
+    <svg viewBox="0 0 30 30" width="30" height="30">
+      <circle class="rb" cx="15" cy="15" r="12.5"/>
+      <circle class="rf" cx="15" cy="15" r="12.5" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}"/>
+    </svg>
+    <span class="ring-num">${CETSTATE.countdown}</span>
+  </span>`;
+}
+
+function qHTML(q, i) {
+  const a = CETSTATE.answers[i];
+  const answered = typeof a === 'number';
+  const active = ['intro','dialogue','stem','answering','answered'].includes(CETSTATE.phase) && i === CETSTATE.q;
+  const counting = CETSTATE.phase === 'answering' && i === CETSTATE.q;
+  const showStem = CETSTATE.revealed.has(i) || answered;
+  const correct = answered && a === q.answer;
+
+  const opts = q.options.map((o, k) => {
+    let st = '';
+    if (answered) {
+      if (k === q.answer) st = 'correct';
+      else if (k === a) st = 'wrong';
+    }
+    const tag = st === 'correct' ? '正确答案' : st === 'wrong' ? '你的选择' : '';
+    return `<button class="opt" data-q="${i}" data-o="${k}" data-state="${st}" ${answered ? 'disabled' : ''}>
+      <span class="opt-key">${'ABCD'[k]}</span>
+      <span class="opt-text">${esc(o)}</span>
+      <span class="opt-tag">${tag}</span>
+    </button>`;
+  }).join('');
+
+  return `<article class="q ${active ? 'active' : ''} ${answered ? 'done' : ''}">
+    <header class="q-head">
+      <span class="q-no">第 ${i + 1} 题 <span>/ ${CET.questions.length}</span></span>
+      ${counting ? ringHTML() : ''}
+      ${answered ? `<span class="tag" style="border-color:transparent;background:${correct ? 'var(--ok-wash)' : 'var(--danger-wash)'};color:${correct ? 'var(--ok)' : 'var(--danger)'};border:1px solid ${correct ? 'var(--ok-line)' : 'var(--danger-line)'}">${correct ? ico('check','i-sm') + '答对' : ico('x','i-sm') + '答错 · 正确答案 ' + 'ABCD'[q.answer]}</span>` : ''}
+      ${!answered && CETSTATE.phase === 'answering' && i !== CETSTATE.q ? '<span class="tag">待作答</span>' : ''}
+      <div class="q-tools">
+        ${!answered ? `<button class="btn btn-xs" data-reveal="${i}">${ico('text','i-sm')}${showStem ? '收起题干' : '显示题干'}</button>` : ''}
+        <button class="btn btn-xs" data-replay="${i}" title="重听题干朗读">${ico('vol','i-sm')}重听题干</button>
+      </div>
+    </header>
+
+    ${showStem
+      ? `<div class="stem">${esc(q.stem)} <span class="zh-inline">${esc(q.stemZh)}</span></div>`
+      : `<div class="stem-hidden">${ico('info','i-sm')}题干由录音朗读，不印在试卷上 —— 点「显示题干」可提前看</div>`}
+
+    <div class="opts">${opts}</div>
+
+    ${answered ? `<div class="exp"><div class="exp-h">解析</div>${esc(q.exp)}</div>` : ''}
+
+    ${CETSTATE.phase === 'answered' && i === CETSTATE.q ? `<div style="margin-top:12px">
+      <button class="btn btn-primary btn-sm" data-next="1">${i + 1 >= CET.questions.length ? '查看结果' : '下一题'}${ico('chev-r','i-sm')}</button>
+    </div>` : ''}
+  </article>`;
+}
+
+function cetPlayerHTML() {
+  const total = CET.questions.length;
+  const answered = CETSTATE.answers.filter((a) => typeof a === 'number').length;
+  const correct = CETSTATE.answers.filter((a, i) => a === CET.questions[i].answer).length;
+  const running = ['intro','dialogue','stem','answering','answered'].includes(CETSTATE.phase);
+  const p = CETSTATE.phase;
+
+  return `<div class="player" style="display:flex;flex-direction:column;gap:14px">
+    <div class="player-bar">
+      ${p === 'idle' ? `<button class="btn btn-primary btn-sm" id="startExam">${ico('play','i-sm')}开始听力</button>` : ''}
+      ${running ? `<button class="btn btn-sm" id="stopExam">${ico('stop','i-sm')}停止</button>` : ''}
+      ${p === 'finished' ? `<button class="btn btn-sm" id="startExam">${ico('loop','i-sm')}重做一遍</button>` : ''}
+      <button class="chip" id="replayChip" aria-pressed="${CETSTATE.allowReplay}"><span class="chip-dot"></span>允许重听材料</button>
+      <button class="chip" id="cetSlowChip" aria-pressed="${CETSTATE.slow}"><span class="chip-dot"></span>慢速</button>
+      <span class="grow"></span>
+      <span class="meta">
+        <span>共 <b>${total}</b> 题</span><span class="meta-sep"></span>
+        <span>已答 <b>${answered}</b></span>
+        ${running ? `<span class="meta-sep"></span><span>第 <b>${Math.min(CETSTATE.q + 1, total)}</b> 题</span>` : ''}
+        ${p === 'finished' ? `<span class="meta-sep"></span><span style="color:var(--text-1)">正确 <b class="strong">${correct} / ${total}</b></span>` : ''}
+      </span>
+    </div>
+
+    <div class="anno-rel"><span class="anno tl">5</span>${railHTML()}</div>
+
+    ${p === 'intro' ? `<div class="note">${ico('vol')}<div>正在播放考试说明 ——<br /><span style="color:var(--text-3)">"${CET.intro}"</span></div></div>` : ''}
+    ${p === 'dialogue' ? `<div class="note">${ico('vol')}<div>正在播放对话材料（第 ${CETSTATE.q + 1} 句）…${CETSTATE.allowReplay ? ' <button class="btn btn-xs" data-replay-mat="1" style="margin-left:6px">重听</button>' : ''}</div></div>` : ''}
+    ${p === 'stem' ? `<div class="note">${ico('vol')}<div>正在朗读第 ${CETSTATE.q + 1} 题题干…</div></div>` : ''}
+    ${p === 'idle' ? `<div class="note">${ico('info')}<div>选项已全部列在下面（同真题：试卷上只有选项，没有问题，题干由录音读出）。点「开始听力」按真题节奏走 —— 先播考试说明 → 放对话 → 逐题朗读题干并留 15 秒；也可以直接点选项作答。</div></div>` : ''}
+
+    <div class="q-list stagger">${CET.questions.map(qHTML).join('')}</div>
+
+    ${p === 'finished' ? `<div class="card card-pad anno-rel">
+      <span class="anno tr">6</span>
+      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:14px">
+        <span class="sect-title">本轮成绩</span>
+        <span class="big-score"><span class="n">${correct}</span><span class="d">/ ${total} 题答对</span></span>
+      </div>
+      <div>${CET.questions.map((q, i) => {
+        const a = CETSTATE.answers[i];
+        const ok = a === q.answer;
+        return `<div class="score-row">
+          <span class="sr-no">第 ${i + 1} 题</span>
+          <span class="sr-you" style="color:${typeof a === 'number' ? (ok ? 'var(--text-1)' : 'var(--danger)') : 'var(--text-3)'}">你选 ${typeof a === 'number' ? 'ABCD'[a] : '未作答'}</span>
+          <span class="sr-right">正确 ${'ABCD'[q.answer]}</span>
+          <span class="score-bar"><i style="width:100%;background:${ok ? 'var(--text-1)' : 'var(--line-2)'}"></i></span>
+          <span style="color:${ok ? 'var(--text-2)' : 'var(--text-3)'};width:34px;text-align:right">${ok ? '对' : '错'}</span>
+        </div>`;
+      }).join('')}</div>
+    </div>` : ''}
+
+    <div style="border-top:1px solid var(--line);padding-top:14px">
+      <button class="btn btn-quiet btn-sm" id="transBtn">${ico('book','i-sm')}${CETSTATE.transcript ? '收起原文与翻译' : '查看原文与翻译（会揭露答案）'}</button>
+      ${CETSTATE.transcript ? `<div style="margin-top:14px">${dialoguePlayerHTML(CET.dialogue)}</div>` : ''}
+    </div>
+  </div>`;
+}
+
+/* ---------- 练习页主渲染 ---------- */
+function renderPractice() {
+  const isExam = SYSTEMS[STATE.system].mode === 'exam';
+  const busyCard = $('#busyCard');
+  const errBox = $('#errBox');
+
+  busyCard.hidden = !STATE.busy;
+  if (STATE.busy) {
+    $('#busyLabel').textContent = isExam ? '正在命题…' : '正在生成对话…';
+    $('#busyCount').textContent = '第 1 步 / 2';
+  }
+
+  errBox.hidden = true;
+
+  const body = $('#practiceBody');
+  if (!STATE.generated) {
+    // 生成中不显示空状态，避免「空状态 + 进度条」同时出现的噪音
+    body.innerHTML = STATE.busy ? '' : `<div class="card anno-rel" style="border-style:dashed">
+      <span class="anno tl">7</span>
+      <div class="empty">
+        <span class="empty-ico">${ico('layers','i-lg')}</span>
+        <span class="empty-t">还没有内容</span>
+        <span class="empty-d">${isExam
+          ? '输入一个场景，生成一段长对话与 4 道四选一选择题，按真题节奏播放。'
+          : '输入一个主题（或点输入框右侧的随机按钮），生成对话并自动合成正常语速与慢速两版音频。'}</span>
+      </div>
+    </div>`;
+    return;
+  }
+
+  body.innerHTML = isExam ? cetPlayerHTML() : dialoguePlayerHTML(DIALOGUE);
+  if (isExam) bindCet(); else bindDialogue();
+}
+
+/* ---------- 对话播放器交互 ---------- */
+function bindDialogue() {
+  let playing = -1;
+  const $list = $('#sentList');
+  const rows = $$('.sent', $list);
+
+  function setPlaying(i) {
+    playing = i;
+    rows.forEach((r, k) => {
+      r.classList.toggle('playing', k === i);
+      // 音波只在 A 角色的句子上。B 角色没有 .eq，直接写 .hidden 会抛
+      // TypeError 并中断整个函数 —— 降调不会生效、后续句也拿不到高亮。
+      const eq = $('.eq', r);
+      if (eq) eq.hidden = !(k === i);
+    });
+    const btn = $('#playAll');
+    if (btn) btn.innerHTML = i >= 0
+      ? `${ico('stop','i-sm')}<span>停止</span>`
+      : `${ico('play','i-sm')}<span>连续播放</span>`;
+    // 播放时其它句子轻微降调，聚焦当前句
+    rows.forEach((r, k) => r.classList.toggle('dim', i >= 0 && k !== i));
+  }
+
+  $('#playAll').addEventListener('click', () => setPlaying(playing >= 0 ? -1 : 0));
+
+  $$('.sent-play', $list).forEach((b, i) => b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setPlaying(playing === i ? -1 : i);
+  }));
+
+  // 点词 → 反白选中 + 浮出「加入单词本」
+  $list.addEventListener('click', (e) => {
+    const w = e.target.closest('.w');
+    if (!w) return;
+    const row = w.closest('.sent');
+    $$('.w.sel').forEach((x) => x.classList.remove('sel'));
+    $$('.pickbar', $list).forEach((x) => x.remove());
+    w.classList.add('sel');
+    const extra = $('.sent-extra', row);
+    extra.hidden = false;
+    extra.innerHTML = `<div class="pickbar">
+      <span class="pick-word">${esc(w.dataset.w)}</span>
+      <button class="btn btn-primary btn-xs" data-add="1">${ico('plus','i-sm')}加入单词本</button>
+    </div>`;
+  });
+
+  $list.addEventListener('click', (e) => {
+    const add = e.target.closest('[data-add]');
+    if (!add) return;
+    const bar = add.closest('.pickbar');
+    bar.innerHTML = `<span class="toast-inline">${ico('check','i-sm')}已加入单词本 · 单词发音正在后台合成</span>`;
+    setTimeout(() => {
+      const row = bar.closest('.sent');
+      if (row) { row.querySelector('.sent-extra').innerHTML = ''; row.querySelector('.sent-extra').hidden = true; }
+      $$('.w.sel', $list).forEach((x) => x.classList.remove('sel'));
+    }, 2200);
+  });
+
+  $$('.sent-zh', $list).forEach((b, i) => b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const row = rows[i];
+    const body = $('.sent-body', row);
+    let zh = $('.zh', body);
+    if (zh) { zh.remove(); return; }
+    zh = document.createElement('div');
+    zh.className = 'zh';
+    zh.textContent = (STATE.system === 'cet' ? CET.dialogue : DIALOGUE)[i].zh;
+    body.appendChild(zh);
+  }));
+
+  $('#slowChip').addEventListener('click', (e) => e.currentTarget.setAttribute('aria-pressed',
+    String(e.currentTarget.getAttribute('aria-pressed') !== 'true')));
+  $('#loopChip').addEventListener('click', (e) => e.currentTarget.setAttribute('aria-pressed',
+    String(e.currentTarget.getAttribute('aria-pressed') !== 'true')));
+}
+
+/* ---------- 四六级交互 ---------- */
+function bindCet() {
+  const rerender = () => {
+    $('#practiceBody').innerHTML = cetPlayerHTML();
+    bindCet();
+  };
+  clearInterval(CETSTATE.timer);
+
+  const finish = () => {
+    clearInterval(CETSTATE.timer);
+    CETSTATE.phase = 'finished';
+    CETSTATE.transcript = true;
+    rerender();
+  };
+
+  /** 从 i 开始找第一道未作答的题；没有则返回 -1（本轮结束） */
+  const firstUnanswered = (from) => {
+    for (let k = from; k < CET.questions.length; k++) {
+      if (typeof CETSTATE.answers[k] !== 'number') return k;
+    }
+    return -1;
+  };
+
+  /**
+   * 推进到某道题：朗读题干 → 15 秒作答窗口。
+   * 已作答的题直接跳过 —— 用户可能在题干还没念完时就选了，
+   * 这时不该再给一次 15 秒机会。
+   */
+  const goToQuestion = (i) => {
+    clearInterval(CETSTATE.timer);
+    const idx = firstUnanswered(i);
+    if (idx === -1) { finish(); return; }
+    CETSTATE.q = idx;
+    CETSTATE.phase = 'stem';
+    rerender();
+    setTimeout(() => {
+      if (CETSTATE.phase === 'stem' && CETSTATE.q === idx) enterAnswer();
+    }, 1400);
+  };
+
+  const enterAnswer = () => {
+    if (typeof CETSTATE.answers[CETSTATE.q] === 'number') { goToQuestion(CETSTATE.q + 1); return; }
+    CETSTATE.phase = 'answering';
+    CETSTATE.countdown = 15;
+    rerender();
+    clearInterval(CETSTATE.timer);
+    CETSTATE.timer = setInterval(() => {
+      if (CETSTATE.phase !== 'answering') { clearInterval(CETSTATE.timer); return; }
+      CETSTATE.countdown -= 1;
+      const left = Math.max(CETSTATE.countdown, 0);
+      const el = $('.ring-num'), rf = $('.ring .rf');
+      if (el) el.textContent = left;
+      if (rf) {
+        const C = 2 * Math.PI * 12.5;
+        rf.setAttribute('stroke-dashoffset', String(C * (1 - left / 15)));
+      }
+      if (left <= 0) { clearInterval(CETSTATE.timer); goToQuestion(CETSTATE.q + 1); }
+    }, 1000);
+  };
+
+  const nextQ = () => goToQuestion(CETSTATE.q + 1);
+
+  const start = () => {
+    clearInterval(CETSTATE.timer);
+    CETSTATE.answers = [null, null, null, null];
+    CETSTATE.revealed = new Set();
+    CETSTATE.transcript = false;
+    CETSTATE.phase = 'intro';
+    CETSTATE.q = 0;
+    rerender();
+    // 演示节奏压缩过：说明 1.6s → 对话 3s → 逐题朗读 1.4s → 15 秒作答
+    setTimeout(() => { if (CETSTATE.phase === 'intro') { CETSTATE.phase = 'dialogue'; rerender(); } }, 1600);
+    setTimeout(() => { if (CETSTATE.phase === 'dialogue') goToQuestion(0); }, 4600);
+  };
+
+  const btn = $('#startExam');
+  if (btn) btn.addEventListener('click', start);
+  const stop = $('#stopExam');
+  if (stop) stop.addEventListener('click', () => { clearInterval(CETSTATE.timer); CETSTATE.phase = 'idle'; rerender(); });
+
+  $$('[data-o]').forEach((o) => o.addEventListener('click', () => {
+    const qi = +o.dataset.q, oi = +o.dataset.o;
+    if (typeof CETSTATE.answers[qi] === 'number') return;
+    CETSTATE.answers[qi] = oi;
+    clearInterval(CETSTATE.timer);
+    if (qi === CETSTATE.q && ['answering','stem'].includes(CETSTATE.phase)) CETSTATE.phase = 'answered';
+    if (CETSTATE.answers.every((a) => typeof a === 'number')) { finish(); return; }
+    rerender();
+  }));
+
+  $$('[data-reveal]').forEach((b) => b.addEventListener('click', () => {
+    const i = +b.dataset.reveal;
+    CETSTATE.revealed.has(i) ? CETSTATE.revealed.delete(i) : CETSTATE.revealed.add(i);
+    rerender();
+  }));
+  $$('[data-replay]').forEach((b) => b.addEventListener('click', () => {
+    b.innerHTML = `${ico('check','i-sm')}已重听`;
+    setTimeout(() => { b.innerHTML = `${ico('vol','i-sm')}重听题干`; }, 1400);
+  }));
+  $$('[data-next]').forEach((b) => b.addEventListener('click', nextQ));
+  $$('[data-replay-mat]').forEach((b) => b.addEventListener('click', () => {
+    b.textContent = '已从头重播';
+  }));
+
+  const rc = $('#replayChip');
+  if (rc) rc.addEventListener('click', () => {
+    CETSTATE.allowReplay = !CETSTATE.allowReplay;
+    rc.setAttribute('aria-pressed', String(CETSTATE.allowReplay));
+  });
+  const sc = $('#cetSlowChip');
+  if (sc) sc.addEventListener('click', () => {
+    CETSTATE.slow = !CETSTATE.slow;
+    sc.setAttribute('aria-pressed', String(CETSTATE.slow));
+  });
+  const tb = $('#transBtn');
+  if (tb) tb.addEventListener('click', () => { CETSTATE.transcript = !CETSTATE.transcript; rerender(); });
+}
+
+/* 工具栏 */
+$('#topic').addEventListener('input', (e) => { STATE.topic = e.target.value; });
+const TOPICS = ['酒店入住','机场值机','退房','求职面试','选课咨询','论文进度汇报','租房咨询','银行开户','看医生','快递理赔'];
+$('#randomBtn').addEventListener('click', () => {
+  const t = TOPICS[Math.floor(Math.random() * TOPICS.length)];
+  STATE.topic = t; $('#topic').value = t;
+});
+$('#genBtn').addEventListener('click', () => {
+  if (STATE.busy) return;
+  STATE.busy = true; STATE.generated = false; renderPractice();
+  setTimeout(() => {
+    STATE.busy = false; STATE.generated = true;
+    CETSTATE.phase = 'idle'; CETSTATE.answers = [null,null,null,null]; CETSTATE.revealed = new Set(); CETSTATE.transcript = false;
+    renderPractice();
+  }, 1500);
+});
+$('#levelSel .select-btn').addEventListener('click', () => {
+  const s = $('#levelSel');
+  const open = s.classList.contains('open');
+  closeMenus();
+  if (!open) { s.classList.add('open'); $('#levelSel .select-btn').setAttribute('aria-expanded', 'true'); }
+});
+
+/* ============================================================
+   单词本
+   ============================================================ */
+const WSTATE = { filter:'unlearned', studying:false, flipped:false, queue:null, total:0, idx:0 };
+
+function renderWords() {
+  const root = $('#wordsRoot');
+  if (WSTATE.studying) { root.innerHTML = studyHTML(); bindStudy(); return; }
+
+  const list = WORDS.filter((w) => w.st === (WSTATE.filter === 'unlearned' ? 'learning' : 'mastered'));
+  const nu = WORDS.filter((w) => w.st === 'learning').length;
+  const nm = WORDS.filter((w) => w.st === 'mastered').length;
+
+  root.innerHTML = `
+    <div class="toolbar">
+      <div class="seg anno-rel" id="segFilter">
+        <span class="anno tl">8</span>
+        <span class="seg-ink"></span>
+        <button class="seg-btn" data-f="unlearned" aria-selected="${WSTATE.filter === 'unlearned'}">未背<em>${nu}</em></button>
+        <button class="seg-btn" data-f="mastered" aria-selected="${WSTATE.filter === 'mastered'}">已背<em>${nm}</em></button>
+      </div>
+      <span class="grow"></span>
+      ${nu > 0 ? `<button class="btn btn-primary btn-sm" id="startStudy">${ico('spark','i-sm')}开始背单词</button>` : ''}
+    </div>
+    ${list.length ? `<div class="list">${list.map(wordRowHTML).join('')}</div>` : `<div class="card" style="border-style:dashed"><div class="empty">
+      <span class="empty-ico">${ico('book','i-lg')}</span>
+      <span class="empty-t">${WSTATE.filter === 'unlearned' ? '没有未背的单词' : '还没有已背的单词'}</span>
+      <span class="empty-d">${WSTATE.filter === 'unlearned'
+        ? '在练习页点任意单词就能加进来，加入后可在这里背、也可听单词与例句的发音。'
+        : '在背单词卡片里点「会背」，单词会移到这里。'}</span>
+    </div></div>`}`;
+
+  setTimeout(() => syncSeg('#segFilter'), 0);
+  $$('#segFilter .seg-btn').forEach((b) => b.addEventListener('click', () => {
+    WSTATE.filter = b.dataset.f; renderWords();
+  }));
+  const s = $('#startStudy');
+  if (s) s.addEventListener('click', () => {
+    WSTATE.studying = true; WSTATE.flipped = false;
+    WSTATE.queue = null; WSTATE.idx = 0; renderWords();
+  });
+}
+
+function wordRowHTML(w, i) {
+  const mastered = w.st === 'mastered';
+  return `<div class="row-word" style="animation-delay:${i * 34}ms">
+    <div style="flex:1;min-width:0">
+      <div class="row-word-head">
+        <span class="word-term">${esc(w.w)}</span>
+        <span class="phon">${esc(w.p)}</span>
+        <button class="icon-btn" data-word-audio="1" title="播放单词发音">${ico('vol','i-sm')}</button>
+      </div>
+      <div class="mean">${esc(w.m)}</div>
+      <div class="ex">${esc(w.ex)}
+        <button class="icon-btn" data-ex-audio="1" title="播放例句发音" style="display:inline-grid;vertical-align:-6px">${ico('vol','i-sm')}</button>
+      </div>
+      <div class="ex-zh">${esc(w.exZh)}</div>
+    </div>
+    <div class="row-acts">
+      <button class="act-text" data-master="${i}">${mastered ? '移回未背' : '标记已背'}</button>
+      <button class="act-text act-del" data-del="${i}" title="删除这个词">删除</button>
+    </div>
+  </div>`;
+}
+
+function studyHTML() {
+  if (!WSTATE.queue) {
+    // 分母取「开局那一刻」的未背数并冻结。若跟着当前未背数实时算，
+    // 背掉一个词分母就少一，会显示成 0/4 这种「越背越没进展」的假象。
+    WSTATE.queue = WORDS.filter((w) => w.st === 'learning').slice();
+    WSTATE.total = WSTATE.queue.length;
+  }
+  const q = WSTATE.queue;
+  const total = WSTATE.total || 1;
+  const done = total - q.length;
+
+  if (!q.length) {
+    return `<div class="card">
+      <div class="empty" style="padding:72px 20px">
+        <span class="empty-ico" style="border-style:solid;border-color:var(--text-1);color:var(--text-1)">${ico('check','i-lg')}</span>
+        <span class="empty-t" style="font-size:15px">这一轮全部背完</span>
+        <span class="empty-d">这 ${total} 个词已标记为「已背」。下次在练习页遇到新词，会继续加进来。</span>
+        <button class="btn btn-primary btn-sm" id="studyExit" style="margin-top:6px">返回单词本</button>
+      </div>
+    </div>`;
+  }
+
+  const w = q[0];
+  return `
+    <div class="study-head">
+      <button class="icon-btn" id="studyExit" title="退出背单词">${ico('chev-l','i-sm')}</button>
+      <div class="study-prog">
+        <div class="bar" style="background:var(--surface-3)"><i style="width:${(done / total * 100).toFixed(0)}%"></i></div>
+      </div>
+      <span class="study-count">${done} / ${total}</span>
+    </div>
+
+    <div class="flip ${WSTATE.flipped ? 'back' : ''}" id="flipCard">
+      <div class="flip-in">
+        <div class="face face-front">
+          <div class="face-word">${esc(w.w)}</div>
+          <div class="face-phon">${esc(w.p)}</div>
+          <button class="icon-btn" data-word-audio="1" title="播放发音" style="margin-top:2px">${ico('vol','i-lg')}</button>
+          <div class="face-hint">${WSTATE.flipped ? '' : '先想想意思，再点下面看中文'}</div>
+        </div>
+        <div class="face face-back">
+          <div class="face-mean">${esc(w.m)}</div>
+          <div class="face-ex">${esc(w.ex)}</div>
+          <div class="face-ex-zh">${esc(w.exZh)}</div>
+          <button class="icon-btn" data-ex-audio="1" title="播放例句">${ico('vol','i-lg')}</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="study-acts">
+      ${WSTATE.flipped
+        ? `<button class="btn" id="studyAgain">${ico('undo','i-sm')}还不会</button>
+           <button class="btn btn-ok" id="studyOk">${ico('check','i-sm')}会背</button>`
+        : `<button class="btn btn-primary" id="reveal" style="flex:1">显示中文</button>
+           <button class="btn btn-quiet" id="studyExit2" style="flex:none">退出</button>`}
+    </div>
+
+    ${WSTATE.flipped ? '' : `<div class="note" style="justify-content:center">${ico('info','i-sm')}<div>卡片可点击翻面，也可以直接按空格。</div></div>`}
+  `;
+}
+
+function bindStudy() {
+  const flip = $('#flipCard');
+  if (flip) flip.addEventListener('click', () => { WSTATE.flipped = !WSTATE.flipped; renderWords(); });
+
+  const rev = $('#reveal');
+  if (rev) rev.addEventListener('click', (e) => { e.stopPropagation(); WSTATE.flipped = true; renderWords(); });
+
+  const ex = $('#studyExit') || $('#studyExit2');
+  if (ex) ex.addEventListener('click', (e) => {
+    e.stopPropagation(); WSTATE.studying = false; WSTATE.queue = null; renderWords();
+  });
+
+  const again = $('#studyAgain');
+  if (again) again.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const cur = WSTATE.queue.shift();
+    WSTATE.queue.push(cur);
+    WSTATE.flipped = false; renderWords();
+  });
+
+  const ok = $('#studyOk');
+  if (ok) ok.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const cur = WSTATE.queue.shift();
+    const w = WORDS.find((x) => x.w === cur.w);
+    if (w) w.st = 'mastered';
+    WSTATE.flipped = false; renderWords();
+  });
+
+  $$('[data-word-audio],[data-ex-audio]').forEach((b) => b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const old = b.innerHTML;
+    b.innerHTML = ico('check','i-sm');
+    setTimeout(() => { b.innerHTML = old; }, 900);
+  }));
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' && WSTATE.studying) { e.preventDefault(); WSTATE.flipped = !WSTATE.flipped; renderWords(); }
+});
+
+$('#wordsRoot').addEventListener('click', (e) => {
+  const m = e.target.closest('[data-master]');
+  if (m) {
+    const i = +m.dataset.master;
+    const list = WORDS.filter((w) => w.st === (WSTATE.filter === 'unlearned' ? 'learning' : 'mastered'));
+    list[i].st = list[i].st === 'mastered' ? 'learning' : 'mastered';
+    renderWords(); return;
+  }
+  const d = e.target.closest('[data-del]');
+  if (d) {
+    const i = +d.dataset.del;
+    const list = WORDS.filter((w) => w.st === (WSTATE.filter === 'unlearned' ? 'learning' : 'mastered'));
+    const target = list[i];
+    const idx = WORDS.indexOf(target);
+    if (idx > -1) WORDS.splice(idx, 1);
+    renderWords();
+  }
+});
+
+/* ============================================================
+   历史
+   ============================================================ */
+let openHist = null;
+function renderHistory() {
+  const root = $('#historyRoot');
+  if (!HISTORY.length) {
+    root.innerHTML = `<div class="card" style="border-style:dashed"><div class="empty">
+      <span class="empty-ico">${ico('clock','i-lg')}</span>
+      <span class="empty-t">还没有历史对话</span>
+      <span class="empty-d">在练习页生成的内容会自动存到这里，随时可以回来重听或重做。</span>
+    </div></div>`;
+    return;
+  }
+  root.innerHTML = `<div class="list stagger">${HISTORY.map((h, i) => `
+    <div class="hist ${openHist === i ? 'open' : ''}" data-h="${i}" style="animation-delay:${i * 40}ms">
+      <div class="hist-head">
+        <button class="hist-main">
+          <svg class="i hist-chev"><use href="#i-chev-r"/></svg>
+          <span class="hist-txt">
+            <span class="hist-title">${esc(h.t || h.topic)}</span>
+            <span class="hist-sub">
+              <span class="tag">${h.sys}</span>
+              <span>${h.lvl}</span>
+              <span>·</span>
+              <span>${h.n} 句</span>
+              ${h.mode === 'exam' ? `<span>·</span><span>${h.score}</span>` : ''}
+              <span>·</span>
+              <span>${h.at}</span>
+            </span>
+          </span>
+          ${h.mode === 'exam' ? '<span class="tag" style="margin-right:2px">听力题</span>' : ''}
+        </button>
+        <button class="icon-btn hist-del" title="删除这条记录">${ico('trash','i-sm')}</button>
+      </div>
+      ${openHist === i ? `<div class="hist-body">${
+        h.mode === 'exam'
+          ? `<div class="note" style="margin-bottom:12px">${ico('info','i-sm')}<div>这是四六级听力题记录（${h.score}）。展开后按真题节奏重做，或查看原文与解析。</div></div>${dialoguePlayerHTML(CET.dialogue)}`
+          : dialoguePlayerHTML(DIALOGUE)
+      }</div>` : ''}
+    </div>`).join('')}</div>`;
+
+  $$('.hist-main', root).forEach((b) => b.addEventListener('click', () => {
+    const i = +b.closest('.hist').dataset.h;
+    openHist = openHist === i ? null : i;
+    renderHistory();
+    if (openHist !== null) setTimeout(() => bindDialogueIn($(`.hist[data-h="${openHist}"] .hist-body`)), 0);
+  }));
+  $$('.hist-del', root).forEach((b) => b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    HISTORY.splice(+b.closest('.hist').dataset.h, 1);
+    openHist = null; renderHistory();
+  }));
+
+  // 首次就带 #history-open 进来时，展开的那条也要绑定播放器交互
+  if (openHist !== null && openHist < HISTORY.length) {
+    setTimeout(() => bindDialogueIn($(`.hist[data-h="${openHist}"] .hist-body`)), 0);
+  }
+}
+
+/* 让历史里展开的播放器也能点词、显示中文 */
+function bindDialogueIn(scope) {
+  if (!scope) return;
+  const list = $('.sent-list', scope);
+  if (!list) return;
+  $('.player-bar .btn', scope)?.addEventListener('click', (e) => {
+    const b = e.currentTarget;
+    const on = b.dataset.on === '1';
+    b.dataset.on = on ? '0' : '1';
+    b.innerHTML = on ? `${ico('play','i-sm')}<span>连续播放</span>` : `${ico('stop','i-sm')}<span>停止</span>`;
+  });
+  $$('.chip', scope).forEach((c) => c.addEventListener('click', () =>
+    c.setAttribute('aria-pressed', String(c.getAttribute('aria-pressed') !== 'true'))));
+
+  list.addEventListener('click', (e) => {
+    const w = e.target.closest('.w');
+    if (!w) return;
+    $$('.w.sel', list).forEach((x) => x.classList.remove('sel'));
+    $$('.pickbar', list).forEach((x) => x.remove());
+    w.classList.add('sel');
+    const extra = $('.sent-extra', w.closest('.sent'));
+    extra.hidden = false;
+    extra.innerHTML = `<div class="pickbar"><span class="pick-word">${esc(w.dataset.w)}</span>
+      <button class="btn btn-primary btn-xs" data-add="1">${ico('plus','i-sm')}加入单词本</button></div>`;
+  });
+  list.addEventListener('click', (e) => {
+    const add = e.target.closest('[data-add]');
+    if (!add) return;
+    add.closest('.pickbar').innerHTML = `<span class="toast-inline">${ico('check','i-sm')}已加入单词本</span>`;
+  });
+  $$('.sent-zh', list).forEach((b) => b.addEventListener('click', (e) => {
+    const row = b.closest('.sent');
+    const body = $('.sent-body', row);
+    const i = +row.dataset.seq;
+    let zh = $('.zh', body);
+    if (zh) { zh.remove(); return; }
+    zh = document.createElement('div');
+    zh.className = 'zh';
+    zh.textContent = DIALOGUE[i].zh;
+    body.appendChild(zh);
+  }));
+  $$('.sent-play', list).forEach((b) => b.addEventListener('click', () => {
+    $$('.sent', list).forEach((r) => { r.classList.remove('playing','dim'); const q = $('.eq', r); if (q) q.hidden = true; });
+    const row = b.closest('.sent');
+    row.classList.add('playing');
+    const eq = $('.eq', row); if (eq) eq.hidden = false;
+    $$('.sent', list).forEach((r) => { if (r !== row) r.classList.add('dim'); });
+  }));
+}
+
+/* ============================================================
+   设置
+   ============================================================ */
+const VOICE_GROUPS = [
+  { label:'美音', voices:[['en-US-AndrewNeural','Andrew','温暖自信，对话自然'],['en-US-JennyNeural','Jenny','标准美音女声，友好'],['en-US-BrianNeural','Brian','随意亲切，像日常聊天']] },
+  { label:'英音', voices:[['en-GB-RyanNeural','Ryan','标准英音男声'],['en-GB-SoniaNeural','Sonia','清晰英音女声']] },
+  { label:'澳音', voices:[['en-AU-WilliamNeural','William','澳音男声，口音自然']] }
+];
+const VSTATE = { a:'en-US-AndrewNeural', b:'en-US-JennyNeural', n:'en-US-GuyNeural', draftKey:'sk-••••••••••••••••••••4f2a' };
+let vMenuOpen = null;
+
+function voiceSelect(id, slot, label, value) {
+  const cur = VOICE_GROUPS.flatMap((g) => g.voices).find((v) => v[0] === value) || ['', '—', ''];
+  const open = vMenuOpen === slot;
+  return `<div class="set-row stack">
+    <div style="display:flex;align-items:center;gap:10px;width:100%">
+      <span class="set-label" style="width:auto;flex:1">${label}</span>
+      <span class="tag">${cur[1]}</span>
+    </div>
+    <div class="set-ctrl" style="width:100%">
+      <div class="select ${open ? 'open' : ''}" data-slot="${slot}" style="flex:1">
+        <button class="select-btn" style="width:100%;justify-content:space-between">
+          <span class="select-val">${cur[1]} <small>${cur[2]}</small></span>
+          ${ico('chev','i-sm')}
+        </button>
+        <div class="menu" style="font-size:12.5px">
+          ${VOICE_GROUPS.map((g) => `<div class="menu-head">${g.label}</div>${g.voices.map((v) => `
+            <button class="menu-item" data-vslot="${slot}" data-vid="${v[0]}" aria-selected="${v[0] === value}">
+              <span class="mi-check">${ico('check','i-sm')}</span>
+              <span class="mi-label">${v[1]} <span style="color:var(--text-3);font-size:11.5px">${v[2]}</span></span>
+            </button>`).join('')}`).join('')}
+        </div>
+      </div>
+      <button class="btn" data-preview="${slot}" style="flex:none">${ico('vol','i-sm')}试听</button>
+    </div>
+  </div>`;
+}
+
+function renderSettings() {
+  const isCet = STATE.system === 'cet';
+  $('#settingsRoot').innerHTML = `
+    <div>
+      <div class="page-title">设置</div>
+      <div class="page-sub">所有配置只保存在本机，不会随安装包分发。</div>
+    </div>
+
+    <div class="grp grp-card anno-rel">
+      <span class="anno inside">9</span>
+      <div class="set-head"><span class="sect-title">难度</span></div>
+
+      <div class="set-row">
+        <div class="set-label">难度体系</div>
+        <div class="set-ctrl">
+          ${Object.keys(SYSTEMS).map((s) => `<button class="chip" data-sys="${s}" aria-pressed="${STATE.system === s}" style="border-radius:var(--r-md)">
+            <span class="chip-dot"></span>${SYSTEMS[s].label}</button>`).join('')}
+        </div>
+      </div>
+
+      <div class="set-row stack">
+        <span class="set-label" style="width:auto">默认难度</span>
+        <div class="set-ctrl" style="width:100%">
+          <div class="select" id="setLevelSel" style="flex:1">
+            <button class="select-btn" style="width:100%;justify-content:space-between">
+              <span class="select-val">${levelText()}</span>${ico('chev','i-sm')}
+            </button>
+            <div class="menu" id="setLevelMenu"></div>
+          </div>
+        </div>
+        <span class="set-hint">${esc((LEVEL_DESC[STATE.system] || {})[STATE.level] || '')}</span>
+      </div>
+    </div>
+
+    <div class="grp grp-card">
+      <div class="set-head"><span class="sect-title">音色</span></div>
+      ${voiceSelect('a', 'a', '角色 A 音色', VSTATE.a)}
+      ${voiceSelect('b', 'b', '角色 B 音色', VSTATE.b)}
+      ${isCet ? voiceSelect('n', 'n', '题干朗读音色', VSTATE.n) : ''}
+      <div class="set-row" style="padding-top:12px">
+        <div class="set-hint" style="margin:0">音色变更只影响<span style="color:var(--text-2);font-weight:600">新生成</span>的对话；已生成的对话保留原有音频，不会串音。${isCet ? ' 四六级模式下，题干由指定音色朗读，选项不朗读（与真题一致）。' : ''}</div>
+      </div>
+    </div>
+
+    <div class="grp grp-card anno-rel">
+      <span class="anno inside">10</span>
+      <div class="set-head"><span class="sect-title">Deepseek API Key</span></div>
+      <div class="set-row stack">
+        <div class="set-ctrl" style="width:100%">
+          <input class="input" id="keyInput" type="password" value="${esc(VSTATE.draftKey)}" placeholder="sk-..." spellcheck="false" />
+          <button class="btn" id="keyToggle" style="flex:none" title="显示 / 隐藏">${ico('info','i-sm')}</button>
+          <button class="btn btn-primary" id="keySave" style="flex:none">保存</button>
+        </div>
+        <span class="set-hint">Key 仅保存在本机 <code style="font-family:ui-monospace,Consolas,monospace;font-size:11px;padding:1px 4px;border-radius:4px;background:var(--surface-3)">%APPDATA%\\nacl-english-listening\\</code>，用于生成对话与题目，不会随安装包分发。</span>
+      </div>
+    </div>
+
+    <div class="grp grp-card anno-rel">
+      <span class="anno inside">11</span>
+      <div class="set-head">
+        <span class="sect-title">数据管理</span>
+        <span style="margin-left:auto;font-size:11.5px;color:var(--text-3)">对话 5 · 单词 6 · 音频缓存 42 MB</span>
+      </div>
+      <div class="set-row" id="dangerRow">
+        <div style="flex:1;min-width:0">
+          <div class="set-label" style="width:auto;color:var(--text-1)">清空所有数据</div>
+          <div class="set-hint">删除全部对话、题目、原文与单词本。API Key 与音色设置会保留。此操作不可恢复。</div>
+        </div>
+        <div class="set-ctrl" style="flex:none" id="dangerCtrl">
+          <button class="btn btn-danger-ghost" id="clearBtn">${ico('trash','i-sm')}清空</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="grp grp-card">
+      <div class="set-head"><span class="sect-title">关于</span></div>
+      <div class="set-row">
+        <div class="set-label">版本</div>
+        <div class="set-ctrl"><span class="tag">v1.4.2</span><span class="set-hint" style="margin:0">Electron · React · better-sqlite3 · edge-tts</span></div>
+      </div>
+      <div class="set-row">
+        <div class="set-label">数据目录</div>
+        <div class="set-ctrl">
+          <code style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:var(--text-2)">%APPDATA%\\nacl-english-listening\\</code>
+        </div>
+      </div>
+    </div>
+  `;
+  bindSettings();
+}
+
+function buildSetLevelMenu() {
+  const menu = $('#setLevelMenu');
+  if (!menu) return;
+  menu.innerHTML = SYSTEMS[STATE.system].levels.map((lv) => `
+    <button class="menu-item" data-slv="${lv}" aria-selected="${STATE.level === lv}">
+      <span class="mi-check">${ico('check','i-sm')}</span>
+      <span class="mi-label">${STATE.system === 'cet' ? lv : SYSTEMS[STATE.system].label + ' ' + lv}</span>
+    </button>`).join('');
+  $$('.menu-item', menu).forEach((b) => b.addEventListener('click', () => {
+    STATE.level = b.dataset.slv;
+    closeMenus();
+    renderSettings(); renderPractice(); buildLevelMenu();
+  }));
+}
+
+function bindSettings() {
+  buildSetLevelMenu();
+
+  $$('[data-sys]').forEach((b) => b.addEventListener('click', () => {
+    if (b.dataset.sys === STATE.system) return;
+    STATE.system = b.dataset.sys;
+    STATE.level = SYSTEMS[STATE.system].levels[0];
+    STATE.generated = false;
+    buildLevelMenu();
+    $('#levelVal').textContent = levelText();
+    $('#genLabel').textContent = STATE.system === 'cet' ? '生成听力题' : '生成对话';
+    $('#topic').placeholder = STATE.system === 'cet' ? '输入场景（如：图书馆借书、求职面试）' : '输入主题';
+    renderSettings(); renderPractice();
+  }));
+
+  const lb = $('#setLevelSel .select-btn');
+  if (lb) lb.addEventListener('click', () => {
+    const box = $('#setLevelSel');
+    const open = box.classList.contains('open');
+    closeMenus();
+    if (!open) { box.classList.add('open'); lb.setAttribute('aria-expanded', 'true'); }
+  });
+
+  $$('[data-vslot]').forEach((b) => b.addEventListener('click', () => {
+    const slot = b.dataset.vslot;
+    if (slot === 'a') VSTATE.a = b.dataset.vid;
+    else if (slot === 'b') VSTATE.b = b.dataset.vid;
+    else VSTATE.n = b.dataset.vid;
+    vMenuOpen = null; renderSettings();
+  }));
+
+  $$('.select[data-slot] .select-btn').forEach((b) => b.addEventListener('click', () => {
+    const box = b.closest('.select');
+    const slot = box.dataset.slot;
+    const open = vMenuOpen === slot;
+    closeMenus();
+    if (!open) {
+      box.classList.add('open');
+      b.setAttribute('aria-expanded', 'true');
+      vMenuOpen = slot;
+    } else { vMenuOpen = null; }
+  }));
+
+  $$('[data-preview]').forEach((b) => b.addEventListener('click', () => {
+    const old = b.innerHTML;
+    b.disabled = true;
+    b.innerHTML = `<span class="spin"></span>合成中`;
+    setTimeout(() => { b.disabled = false; b.innerHTML = old; }, 1600);
+  }));
+
+  const kt = $('#keyToggle');
+  if (kt) kt.addEventListener('click', () => {
+    const inp = $('#keyInput');
+    inp.type = inp.type === 'password' ? 'text' : 'password';
+  });
+
+  const ks = $('#keySave');
+  if (ks) ks.addEventListener('click', () => {
+    const old = ks.innerHTML;
+    ks.innerHTML = `${ico('check','i-sm')}已保存`;
+    setTimeout(() => { ks.innerHTML = old; }, 1800);
+  });
+
+  const cb = $('#clearBtn');
+  if (cb) cb.addEventListener('click', () => {
+    const ctrl = $('#dangerCtrl');
+    ctrl.innerHTML = `<span style="font-size:12.5px;color:var(--danger);display:flex;align-items:center;gap:7px">
+        ${ico('alert','i-sm')}此操作不可恢复，确认清空？</span>
+      <button class="btn btn-sm" id="clearNo" style="flex:none">取消</button>
+      <button class="btn btn-sm btn-danger-ghost" id="clearYes" style="flex:none;border-color:var(--danger-line);color:var(--danger);background:var(--danger-wash)">确认清空</button>`;
+    const setDanger = (done) => {
+      ctrl.innerHTML = done
+        ? `<span style="font-size:12.5px;color:var(--text-2);display:flex;align-items:center;gap:6px">${ico('check','i-sm')}已清空，API Key 与音色设置已保留</span>`
+        : `<button class="btn btn-danger-ghost" id="clearBtn">${ico('trash','i-sm')}清空</button>`;
+      if (done) setTimeout(() => bindSettings(), 2400); else bindSettings();
+    };
+    $('#clearNo').addEventListener('click', () => setDanger(false));
+    $('#clearYes').addEventListener('click', () => setDanger(true));
+  });
+}
+
+/* ============================================================
+   启动
+   ============================================================ */
+
+/**
+ * 深链状态：方便直接跳到某个页面 / 某个状态截图或评审。
+ * 形如 #<状态>[:light|:dark][:anno][:nosem]
+ * 例：#words-study:light、#cet-finished、#practice-busy:anno
+ */
+const DEEP = {
+  'practice':         () => {},
+  'practice-empty':   () => { STATE.generated = false },
+  'practice-busy':    () => { STATE.generated = false; STATE.busy = true },
+  'cet':              () => { STATE.system = 'cet'; STATE.level = '四级' },
+  'cet-finished':     () => {
+    STATE.system = 'cet'; STATE.level = '四级';
+    CETSTATE.answers = [0, 1, 1, 2];
+    CETSTATE.phase = 'finished'; CETSTATE.transcript = true;
+  },
+  'cet-answering':    () => {
+    STATE.system = 'cet'; STATE.level = '四级';
+    CETSTATE.answers = [0, null, null, null];
+    CETSTATE.phase = 'answering'; CETSTATE.q = 1; CETSTATE.countdown = 11;
+  },
+  'words':            () => {},
+  'words-mastered':   () => { WSTATE.filter = 'mastered' },
+  'words-study':      () => { WSTATE.studying = true; WSTATE.queue = null; WSTATE.flipped = false },
+  'words-study-back': () => { WSTATE.studying = true; WSTATE.queue = null; WSTATE.flipped = true },
+  'words-study-done': () => { WSTATE.studying = true; WSTATE.queue = []; WSTATE.total = 5; WSTATE.flipped = false },
+  'history':          () => {},
+  'history-open':     () => { openHist = 0 },
+  'settings':         () => {}
+};
+
+const KNOBS = {
+  light: () => setTheme('light'),
+  dark:  () => setTheme('dark'),
+  anno:  () => {
+    document.body.dataset.anno = 'on';
+    const c = $('#annoSw');
+    c.setAttribute('aria-pressed', 'true');
+    c.lastChild.textContent = '开';
+    $('#insLegend').hidden = false;
+  },
+  fold:  () => { document.body.dataset.ins = 'fold' },
+  noanim: () => { document.body.dataset.noanim = '1' },
+  menu:  () => { $('#levelSel').classList.add('open'); $('#levelSel .select-btn').setAttribute('aria-expanded', 'true') },
+  nosem: () => {
+    document.documentElement.dataset.semantic = 'off';
+    const c = $('#semSw');
+    c.setAttribute('aria-pressed', 'false');
+    c.lastChild.textContent = '关';
+  }
+};
+
+function applyHashState() {
+  const raw = (location.hash || '').replace(/^#/, '');
+  if (!raw) return null;
+  const [key, ...knobs] = raw.split(':');
+  if (!DEEP[key]) return null;
+  DEEP[key]();
+  knobs.forEach((k) => KNOBS[k] && KNOBS[k]());
+  if (key.startsWith('cet')) return 'practice';
+  return key.split('-')[0];
+}
+
+function init() {
+  // 首帧先关过渡再定主题，避免「暗 → 亮」闪一下
+  document.documentElement.classList.add('no-anim');
+  setTheme('dark');
+
+  const tab = applyHashState();
+  requestAnimationFrame(() => requestAnimationFrame(() => document.documentElement.classList.remove('no-anim')));
+
+  buildLevelMenu();
+  $('#levelVal').textContent = levelText();
+  $('#genLabel').textContent = STATE.system === 'cet' ? '生成听力题' : '生成对话';
+  $('#topic').placeholder = STATE.system === 'cet' ? '输入场景（如：图书馆借书、求职面试）' : '输入主题';
+
+  renderPractice();
+  renderWords();
+  renderHistory();
+  renderSettings();
+
+  go(tab || 'practice');
+  moveInk();
+
+  // 窗口尺寸变化后重新对齐滑块指示器
+  let rt;
+  window.addEventListener('resize', () => {
+    clearTimeout(rt);
+    rt = setTimeout(() => {
+      moveInk();
+      $$('.seg').forEach((s) => syncSeg('#' + s.id));
+    }, 90);
+  });
+
+  // 字体加载完成后重新对齐（Segoe UI / 雅黑 的度量差异会让首帧偏移）
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(() => { moveInk(); $$('.seg').forEach((s) => syncSeg('#' + s.id)); });
+  }
+}
+
+// 全局键盘导航：数字键 1–4 切页面（方便快速审阅）
+document.addEventListener('keydown', (e) => {
+  if (e.target.matches('input, textarea')) return;
+  const map = { '1':'practice', '2':'words', '3':'history', '4':'settings' };
+  if (map[e.key]) go(map[e.key]);
+});
+
+init();
+</script>
+</body>
+</html>

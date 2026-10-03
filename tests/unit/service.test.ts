@@ -2,6 +2,7 @@ import { describe, it, beforeEach, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { AppDatabase } from '../../src/main/db.ts'
 import { AppService, normalizeWord } from '../../src/main/service.ts'
+import type { WordRecord } from '../../shared/types.ts'
 import { cetJson as cetFixture } from './helpers/cetFixture.ts'
 
 const VALID_JSON = JSON.stringify({
@@ -16,6 +17,45 @@ const VALID_JSON = JSON.stringify({
 /** 词数达标的四六级听力题（词数不足会被 parseCetResponse 拦下） */
 function cetJson(questionCount = 4): string {
   return cetFixture({ questionCount })
+}
+
+/**
+ * 造一个「查词」用的 fetch mock：按词返回音标 + 中文释义。
+ *
+ * 查词现在只走 Deepseek 一次请求（以前是免费词典 + 翻译两步串行，
+ * 而那个免费词典在国内必然卡满 6 秒超时，已在 1.4.6 移除）。
+ */
+function glossFetch(glosses: Record<string, { phonetic?: string; meaning?: string }>): {
+  fetch: typeof fetch
+  calls: () => number
+  asked: () => string[]
+} {
+  let calls = 0
+  let asked: string[] = []
+  const fetchImpl = (async (_u: string | URL | Request, init?: RequestInit) => {
+    calls++
+    const prompt = String(
+      (JSON.parse(String(init?.body)) as { messages: { content: string }[] }).messages[0].content
+    )
+    asked = (prompt.split('单词：')[1] ?? '').split('\n')[0].split(',').map((s) => s.trim()).filter(Boolean)
+    const words = asked.map((w) => ({
+      word: w,
+      phonetic: glosses[w]?.phonetic ?? null,
+      meaning: glosses[w]?.meaning ?? null
+    }))
+    return {
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: JSON.stringify({ words }) } }] })
+    } as unknown as Response
+  }) as unknown as typeof fetch
+  return { fetch: fetchImpl, calls: () => calls, asked: () => asked }
+}
+
+/** 查词一路全失败（网络不可用） */
+function deadFetch(): typeof fetch {
+  return (async () => {
+    throw new Error('network down')
+  }) as unknown as typeof fetch
 }
 
 let db: AppDatabase
@@ -185,29 +225,309 @@ describe('addWordToBook', () => {
 
   it('后台补全中文释义与音标', async () => {
     db.setConfig('deepseek_api_key', 'sk-test')
-    const mockFetch = (async (input: string | URL | Request) => {
-      const url = String(input)
-      if (url.includes('dictionaryapi')) {
-        return {
-          ok: true,
-          status: 200,
-          json: async () => [
-            { word: 'coffee', phonetic: '/ˈkɒfi/', meanings: [{ definitions: [{ definition: 'a hot drink' }] }] }
-          ]
-        } as unknown as Response
-      }
-      return {
-        ok: true,
-        json: async () => ({ choices: [{ message: { content: '咖啡' } }] })
-      } as unknown as Response
-    }) as typeof fetch
-    const svc = new AppService(db, '/tmp/audio', mockFetch)
+    const mockFetch = glossFetch({ coffee: { phonetic: '/ˈkɒfi/', meaning: '咖啡' } })
+    const svc = new AppService(db, '/tmp/audio', mockFetch.fetch)
 
     const record = await svc.addWordToBook('coffee', null, null, null)
     await new Promise((r) => setTimeout(r, 20))
     const w = db.getWord(record.id)
     assert.equal(w!.meaning, '咖啡')
     assert.equal(w!.phonetic, '/ˈkɒfi/')
+    // 音标与释义来自同一次请求 —— 不再有「先等免费词典超时」那一步
+    assert.equal(mockFetch.calls(), 1)
+  })
+})
+
+describe('enrichMissingWords', () => {
+  it('补齐只有例句、没有释义的词（老数据 / 加入时还没查到）', async () => {
+    db.setConfig('deepseek_api_key', 'sk-test')
+    const mockFetch = glossFetch({ coffee: { phonetic: '/ˈkɒfi/', meaning: '咖啡' } })
+    const svc = new AppService(db, '/tmp/audio', mockFetch.fetch)
+
+    // 直接插一条「有例句、无释义」的记录：这正是背单词卡片变成空卡的那种数据
+    const record: WordRecord = {
+      id: 'w-null-mean',
+      word: 'coffee',
+      meaning: null,
+      phonetic: null,
+      example: 'I ordered a coffee.',
+      exampleTranslation: '我点了一杯咖啡',
+      wordAudioPath: null,
+      exampleAudioPath: null,
+      sourceSentenceId: null,
+      addedAt: Date.now(),
+      reviewCount: 0,
+      nextReviewAt: Date.now(),
+      status: 'learning'
+    }
+    db.addWord(record)
+
+    const done = await svc.enrichMissingWords()
+    assert.equal(done, 1)
+    const w = db.getWord('w-null-mean')!
+    assert.equal(w.meaning, '咖啡')
+    assert.equal(w.phonetic, '/ˈkɒfi/')
+    // 例句不该被释义流程动过
+    assert.equal(w.example, 'I ordered a coffee.')
+  })
+
+  it('单词本里没有缺释义的词时返回 0', async () => {
+    const svc = new AppService(db, '/tmp/audio', glossFetch({}).fetch)
+    assert.equal(await svc.enrichMissingWords(), 0)
+  })
+
+  it('查词网络失败时不写入空释义、也不抛错', async () => {
+    db.setConfig('deepseek_api_key', 'sk-test')
+    const svc = new AppService(db, '/tmp/audio', deadFetch())
+
+    db.addWord({
+      id: 'w-fail',
+      word: 'coffee',
+      meaning: null,
+      phonetic: null,
+      example: null,
+      exampleTranslation: null,
+      wordAudioPath: null,
+      exampleAudioPath: null,
+      sourceSentenceId: null,
+      addedAt: Date.now(),
+      reviewCount: 0,
+      nextReviewAt: Date.now(),
+      status: 'learning'
+    })
+
+    const done = await svc.enrichMissingWords()
+    assert.equal(done, 1)
+    assert.equal(db.getWord('w-fail')!.meaning, null)
+  })
+})
+
+describe('previewWord', () => {
+  const coffee = () => glossFetch({ coffee: { phonetic: '/ˈkɒfi/', meaning: '咖啡' } })
+
+  it('未收录的词一次请求就拿到音标 + 中文释义，且不落库', async () => {
+    db.setConfig('deepseek_api_key', 'sk-test')
+    const mock = coffee()
+    const svc = new AppService(db, '/tmp/audio', mock.fetch)
+
+    const p = await svc.previewWord('coffee.')
+    assert.equal(p.word, 'coffee') // 首尾标点被清掉
+    assert.equal(p.meaning, '咖啡')
+    assert.equal(p.phonetic, '/ˈkɒfi/')
+    assert.equal(p.inBook, false)
+    // 关键：音标与释义来自同一次请求。以前是「免费词典 → 翻译」两步串行，
+    // 而那个免费词典在国内必然卡满 6 秒超时，这才是点词慢的根因。
+    assert.equal(mock.calls(), 1)
+    assert.equal(db.listWords().length, 0, '预览不应该写库')
+  })
+
+  it('已在单词本里的词直接读本地，不再走网络', async () => {
+    let calls = 0
+    const mockFetch = (async () => {
+      calls++
+      return { ok: true, status: 200, json: async () => [] } as unknown as Response
+    }) as typeof fetch
+    const svc = new AppService(db, '/tmp/audio', mockFetch)
+
+    const record: WordRecord = {
+      id: 'w-known',
+      word: 'coffee',
+      meaning: '咖啡',
+      phonetic: '/ˈkɒfi/',
+      example: null,
+      exampleTranslation: null,
+      wordAudioPath: null,
+      exampleAudioPath: null,
+      sourceSentenceId: null,
+      addedAt: Date.now(),
+      reviewCount: 0,
+      nextReviewAt: Date.now(),
+      status: 'learning'
+    }
+    db.addWord(record)
+
+    const p = await svc.previewWord('coffee')
+    assert.equal(p.meaning, '咖啡')
+    assert.equal(p.inBook, true)
+    assert.equal(calls, 0, '已在单词本里的词不该再发请求')
+  })
+
+  it('同一个词第二次查询命中缓存，只发一次请求', async () => {
+    db.setConfig('deepseek_api_key', 'sk-test')
+    const mock = coffee()
+    const svc = new AppService(db, '/tmp/audio', mock.fetch)
+
+    await svc.previewWord('coffee')
+    await svc.previewWord('coffee')
+    assert.equal(mock.calls(), 1)
+  })
+
+  it('查不到的词短期里不反复打网络（负缓存）', async () => {
+    db.setConfig('deepseek_api_key', 'sk-test')
+    const mock = glossFetch({})
+    const svc = new AppService(db, '/tmp/audio', mock.fetch)
+
+    const first = await svc.previewWord('zzzz')
+    assert.equal(first.meaning, null)
+    const second = await svc.previewWord('zzzz')
+    assert.equal(second.meaning, null)
+    // 以前「查不到就不缓存」→ 连点同一个生僻词会一次次重打网络
+    assert.equal(mock.calls(), 1, '第二次应该命中负缓存')
+  })
+
+  it('无效单词抛错', async () => {
+    const svc = new AppService(db, '/tmp/audio', coffee().fetch)
+    await assert.rejects(() => svc.previewWord('...'), /无效/)
+  })
+})
+
+describe('prefetchWords', () => {
+  it('整句一次查完，之后点句中任何词都命中缓存（0 次新请求）', async () => {
+    db.setConfig('deepseek_api_key', 'sk-test')
+    const mock = glossFetch({
+      negotiate: { phonetic: '/nɪˈɡoʊʃieɪt/', meaning: '谈判；协商' },
+      reception: { phonetic: '/rɪˈsepʃn/', meaning: '接待；前台' },
+      colleague: { phonetic: '/ˈkɒliːɡ/', meaning: '同事' }
+    })
+    const svc = new AppService(db, '/tmp/audio', mock.fetch)
+
+    const n = await svc.prefetchWords(['negotiate', 'reception', 'colleague'])
+    assert.equal(n, 3)
+    assert.equal(mock.calls(), 1, '三个词应该只发一次请求')
+
+    // 预取之后再点词：不该再有任何网络请求
+    const mock2 = mock.calls()
+    const p = await svc.previewWord('reception')
+    assert.equal(p.meaning, '接待；前台')
+    assert.equal(p.phonetic, '/rɪˈsepʃn/')
+    assert.equal(mock.calls(), mock2, '预取过的词点开必须是瞬时的')
+    assert.equal(db.listWords().length, 0, '预取不应该写库')
+  })
+
+  it('已在单词本里的词直接读本地，不占用预取名额', async () => {
+    db.setConfig('deepseek_api_key', 'sk-test')
+    const mock = glossFetch({ reception: { phonetic: '/rɪˈsepʃn/', meaning: '接待' } })
+    const svc = new AppService(db, '/tmp/audio', mock.fetch)
+
+    db.addWord({
+      id: 'w-coffee',
+      word: 'coffee',
+      meaning: '咖啡',
+      phonetic: '/ˈkɒfi/',
+      example: null,
+      exampleTranslation: null,
+      wordAudioPath: null,
+      exampleAudioPath: null,
+      sourceSentenceId: null,
+      addedAt: Date.now(),
+      reviewCount: 0,
+      nextReviewAt: Date.now(),
+      status: 'learning'
+    })
+
+    await svc.prefetchWords(['coffee', 'reception'])
+    // 只查了 reception，coffee 走本地
+    assert.deepEqual(mock.asked(), ['reception'])
+    // 本地那条也进了缓存：点开同样瞬时
+    const p = await svc.previewWord('coffee')
+    assert.equal(p.meaning, '咖啡')
+    assert.equal(p.inBook, true)
+  })
+
+  it('去重、清理标点，且不重复查已经缓存过的词', async () => {
+    db.setConfig('deepseek_api_key', 'sk-test')
+    const mock = glossFetch({ coffee: { meaning: '咖啡' } })
+    const svc = new AppService(db, '/tmp/audio', mock.fetch)
+
+    await svc.prefetchWords(['coffee', 'coffee.', 'COFFEE', '  '])
+    assert.deepEqual(mock.asked(), ['coffee'])
+
+    const before = mock.calls()
+    await svc.prefetchWords(['coffee'])
+    assert.equal(mock.calls(), before, '已缓存的词不该再发请求')
+  })
+
+  it('预取失败不写负缓存：用户真点它时仍会重新查一次', async () => {
+    db.setConfig('deepseek_api_key', 'sk-test')
+    let calls = 0
+    let broken = true
+    const flaky = (async (_u: string | URL | Request, init?: RequestInit) => {
+      calls++
+      if (broken) throw new Error('network down')
+      const prompt = String(
+        (JSON.parse(String(init?.body)) as { messages: { content: string }[] }).messages[0].content
+      )
+      const w = (prompt.split('单词：')[1] ?? '').split('\n')[0].trim()
+      return {
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: JSON.stringify({ words: [{ word: w, phonetic: null, meaning: '咖啡' }] }) } }]
+        })
+      } as unknown as Response
+    }) as unknown as typeof fetch
+    const svc = new AppService(db, '/tmp/audio', flaky)
+
+    assert.equal(await svc.prefetchWords(['coffee']), 0)
+    assert.equal(calls, 1)
+
+    broken = false
+    const p = await svc.previewWord('coffee')
+    assert.equal(calls, 2, '预取失败不该把这次失败当成「查不到」钉死')
+    assert.equal(p.meaning, '咖啡')
+  })
+
+  it('模型漏返回的词不写负缓存（否则会误显示「查不到」）', async () => {
+    db.setConfig('deepseek_api_key', 'sk-test')
+    let phase = 0
+    const mock = (async (_u: string | URL | Request, init?: RequestInit) => {
+      phase++
+      const prompt = String(
+        (JSON.parse(String(init?.body)) as { messages: { content: string }[] }).messages[0].content
+      )
+      const asked = (prompt.split('单词：')[1] ?? '')
+        .split('\n')[0]
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+      // 第一次（预取）模型只回了 coffee，漏掉 tea
+      const words = (
+        phase === 1
+          ? asked.filter((w) => w === 'coffee').map((w) => ({ word: w, phonetic: '/ˈkɒfi/', meaning: '咖啡' }))
+          : asked.map((w) => ({ word: w, phonetic: '/tiː/', meaning: '茶' }))
+      )
+      return {
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: JSON.stringify({ words }) } }] })
+      } as unknown as Response
+    }) as unknown as typeof fetch
+    const svc = new AppService(db, '/tmp/audio', mock)
+
+    assert.equal(await svc.prefetchWords(['coffee', 'tea']), 1)
+
+    // 点漏掉的那个词：必须重新查，而不是拿负缓存说「查不到」
+    const p = await svc.previewWord('tea')
+    assert.equal(p.meaning, '茶')
+    assert.equal(phase, 2)
+  })
+
+  it('没有 apiKey 时直接返回 0，不发请求', async () => {
+    let calls = 0
+    const spy = (async () => {
+      calls++
+      return { ok: true, json: async () => ({}) } as unknown as Response
+    }) as unknown as typeof fetch
+    const svc = new AppService(db, '/tmp/audio', spy)
+    assert.equal(await svc.prefetchWords(['coffee']), 0)
+    assert.equal(calls, 0)
+  })
+
+  it('空列表不发请求', async () => {
+    db.setConfig('deepseek_api_key', 'sk-test')
+    const mock = glossFetch({})
+    const svc = new AppService(db, '/tmp/audio', mock.fetch)
+    assert.equal(await svc.prefetchWords([]), 0)
+    assert.equal(await svc.prefetchWords(['  ', '...']), 0)
+    assert.equal(mock.calls(), 0)
   })
 })
 

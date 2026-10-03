@@ -7,6 +7,7 @@ export default function WordBookView() {
   const refreshWords = useAppStore((s) => s.refreshWords)
   const deleteWord = useAppStore((s) => s.deleteWord)
   const markWordMastered = useAppStore((s) => s.markWordMastered)
+  const enrichMissingWords = useAppStore((s) => s.enrichMissingWords)
 
   const [filter, setFilter] = useState<'unlearned' | 'mastered'>('unlearned')
   const [studying, setStudying] = useState(false)
@@ -14,6 +15,13 @@ export default function WordBookView() {
   useEffect(() => {
     refreshWords()
   }, [refreshWords])
+
+  // 释义是背单词卡片的正面内容。历史数据、以及「加入单词本时词典/翻译还没回来」的词
+  // 会缺它，卡片就只剩例句、看起来像「没有中文意思」。这里在进入单词本时后台补一次，
+  // 补完由 store 自动刷新，卡片与列表随之填上释义。
+  useEffect(() => {
+    void enrichMissingWords()
+  }, [enrichMissingWords])
 
   const unlearned = words.filter((w) => w.status === 'learning')
   const mastered = words.filter((w) => w.status === 'mastered')
@@ -32,41 +40,40 @@ export default function WordBookView() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-6 py-6 space-y-4">
+    <div className="wrap">
       {/* 分类 tab + 背单词入口 */}
-      <div className="flex gap-2 items-center">
-        <button
-          onClick={() => setFilter('unlearned')}
-          className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${
-            filter === 'unlearned'
-              ? 'bg-zinc-900 text-zinc-50 border-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 dark:border-zinc-100'
-              : 'bg-white border-zinc-300 hover:bg-zinc-100 dark:bg-zinc-900 dark:border-zinc-700 dark:hover:bg-zinc-800'
-          }`}
-        >
-          未背（{unlearned.length}）
-        </button>
-        <button
-          onClick={() => setFilter('mastered')}
-          className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${
-            filter === 'mastered'
-              ? 'bg-zinc-900 text-zinc-50 border-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 dark:border-zinc-100'
-              : 'bg-white border-zinc-300 hover:bg-zinc-100 dark:bg-zinc-900 dark:border-zinc-700 dark:hover:bg-zinc-800'
-          }`}
-        >
-          已背（{mastered.length}）
-        </button>
-        {unlearned.length > 0 && (
+      <div className="toolbar">
+        <div className="seg" role="tablist" aria-label="单词分类">
           <button
-            onClick={() => setStudying(true)}
-            className="ml-auto px-4 py-1.5 rounded-lg text-sm bg-yellow-400 text-zinc-900 font-medium hover:bg-yellow-300 dark:bg-yellow-500 dark:hover:bg-yellow-400 transition-colors"
+            role="tab"
+            aria-selected={filter === 'unlearned'}
+            onClick={() => setFilter('unlearned')}
+            className="seg-btn"
           >
+            未背 <em>{unlearned.length}</em>
+          </button>
+          <button
+            role="tab"
+            aria-selected={filter === 'mastered'}
+            onClick={() => setFilter('mastered')}
+            className="seg-btn"
+          >
+            已背 <em>{mastered.length}</em>
+          </button>
+        </div>
+
+        {unlearned.length > 0 && (
+          <button onClick={() => setStudying(true)} className="btn btn-primary ml-auto">
+            <svg className="i">
+              <use href="#i-layers" />
+            </svg>
             开始背单词
           </button>
         )}
       </div>
 
       {/* 单词列表 */}
-      <div className="space-y-2">
+      <div className="list">
         {shown.map((w) => (
           <WordItem
             key={w.id}
@@ -76,8 +83,18 @@ export default function WordBookView() {
           />
         ))}
         {shown.length === 0 && (
-          <div className="text-zinc-500 text-center py-8">
-            {filter === 'unlearned' ? '暂无未背单词' : '暂无已背单词'}
+          <div className="empty">
+            <span className="empty-ico">
+              <svg className="i i-lg">
+                <use href="#i-book" />
+              </svg>
+            </span>
+            <span className="empty-t">{filter === 'unlearned' ? '暂无未背单词' : '暂无已背单词'}</span>
+            <span className="empty-d">
+              {filter === 'unlearned'
+                ? '在练习页点对话里的任意单词，就能把它收进这里。'
+                : '背单词时点「会背」，单词就会移到这个分类。'}
+            </span>
           </div>
         )}
       </div>
@@ -105,56 +122,61 @@ function WordItem({ word, onDelete, onToggleMastered }: WordItemProps) {
   const mastered = word.status === 'mastered'
 
   return (
-    <div className="bg-white border border-zinc-200 rounded-xl p-3 dark:bg-zinc-900 dark:border-zinc-800">
-      <div className="flex items-start gap-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-3 flex-wrap">
-            <span className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">{word.word}</span>
-            {word.phonetic && <span className="text-sm text-zinc-400 dark:text-zinc-500">{word.phonetic}</span>}
-            <button
-              onClick={() => play(word.wordAudioUrl)}
-              disabled={!word.wordAudioUrl}
-              className={`text-sm ${word.wordAudioUrl ? 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-100' : 'text-zinc-300 dark:text-zinc-700'}`}
-              title="播放单词发音"
-            >
-              🔊
-            </button>
-          </div>
-          {word.meaning && <div className="text-sm text-zinc-600 dark:text-zinc-400 mt-1">{word.meaning}</div>}
-          {word.example && (
-            <div className="text-sm text-zinc-500 mt-1 italic">
-              {word.example}
-              <button
-                onClick={() => play(word.exampleAudioUrl)}
-                disabled={!word.exampleAudioUrl}
-                className={`ml-2 text-xs not-italic ${word.exampleAudioUrl ? 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-100' : 'text-zinc-300 dark:text-zinc-700'}`}
-                title="播放例句发音"
-              >
-                🔊
-              </button>
-            </div>
-          )}
-          {word.exampleTranslation && (
-            <div className="text-sm text-zinc-500 mt-0.5">{word.exampleTranslation}</div>
-          )}
+    <div className="row-word">
+      <div className="grow">
+        <div className="row-word-head">
+          <span className="word-term">{word.word}</span>
+          {word.phonetic && <span className="phon">{word.phonetic}</span>}
+          <button
+            onClick={() => play(word.wordAudioUrl)}
+            disabled={!word.wordAudioUrl}
+            className="icon-btn"
+            title="播放单词发音"
+            aria-label="播放单词发音"
+          >
+            <svg className="i i-sm">
+              <use href="#i-vol" />
+            </svg>
+          </button>
         </div>
 
-        <div className="shrink-0 flex flex-col gap-1 items-end">
-          <button
-            onClick={() => onToggleMastered(word.id, !mastered)}
-            className="px-2 py-1 rounded text-xs text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 dark:hover:text-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-            title={mastered ? '移回未背' : '标记已背'}
-          >
-            {mastered ? '移回未背' : '标记已背'}
-          </button>
-          <button
-            onClick={() => onDelete(word.id)}
-            className="px-2 py-1 rounded text-xs text-zinc-400 hover:text-red-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-            title="删除"
-          >
-            删除
-          </button>
-        </div>
+        {word.meaning ? (
+          <div className="mean">{word.meaning}</div>
+        ) : (
+          <div className="mean mean-pending">释义获取中…</div>
+        )}
+
+        {word.example && (
+          <div className="ex">
+            {word.example}
+            <button
+              onClick={() => play(word.exampleAudioUrl)}
+              disabled={!word.exampleAudioUrl}
+              className="icon-btn inline ml-1"
+              title="播放例句发音"
+              aria-label="播放例句发音"
+            >
+              <svg className="i i-sm">
+                <use href="#i-vol" />
+              </svg>
+            </button>
+          </div>
+        )}
+
+        {word.exampleTranslation && <div className="ex-zh">{word.exampleTranslation}</div>}
+      </div>
+
+      <div className="row-acts">
+        <button
+          onClick={() => onToggleMastered(word.id, !mastered)}
+          className="act-text"
+          title={mastered ? '移回未背' : '标记已背'}
+        >
+          {mastered ? '移回未背' : '标记已背'}
+        </button>
+        <button onClick={() => onDelete(word.id)} className="act-text act-del" title="删除">
+          删除
+        </button>
       </div>
     </div>
   )
@@ -167,16 +189,25 @@ interface StudyCardsProps {
 
 function StudyCards({ words, onClose }: StudyCardsProps) {
   const markWordMastered = useAppStore((s) => s.markWordMastered)
-  // 进入背单词时对单词列表做本地快照，避免标记"会背"后 store 刷新导致列表变短，
-  // 从而出现跳词、提前"背完"的问题
-  const [queue, setQueue] = useState<WordView[]>(words)
+  // 卡片内容从 store 实时取（而不是进来那一刻的快照）：
+  // 后台补齐释义后卡片会自己更新，否则会永远停在「加入时还没有释义」的空卡上。
+  const liveWords = useAppStore((s) => s.words)
+  // 队列只记 id 与顺序：这样「标记会背后 store 列表变短」不会让队列对象失配，
+  // 也不会出现跳词、提前「背完」。
+  const [queue, setQueue] = useState<string[]>(() => words.map((w) => w.id))
   const [revealed, setRevealed] = useState(false)
   const busyRef = useRef(false)
+  // 本轮的起始词数：只用于进度条分母。必须冻结，否则分母会随队列缩短而缩小，
+  // 出现「0 / 4 → 0 / 3」这种看起来永远背不完的假象。
+  const totalRef = useRef(words.length)
 
-  const word = queue[0]
+  const wordId = queue[0]
+  const word = liveWords.find((w) => w.id === wordId) ?? words.find((w) => w.id === wordId)
+  const total = totalRef.current
+  const done = Math.max(0, total - queue.length)
 
   async function handleResult(mastered: boolean): Promise<void> {
-    const current = queue[0]
+    const current = word
     if (!current || busyRef.current) return
     busyRef.current = true
     try {
@@ -184,7 +215,7 @@ function StudyCards({ words, onClose }: StudyCardsProps) {
       // 从队头移除当前词；"还不会"的词移到队尾，稍后再次复习
       setQueue((q) => {
         const [, ...rest] = q
-        if (!mastered) rest.push(current)
+        if (!mastered) rest.push(current.id)
         return rest
       })
       if (mastered) {
@@ -197,62 +228,91 @@ function StudyCards({ words, onClose }: StudyCardsProps) {
 
   if (!word) {
     return (
-      <div className="max-w-md mx-auto px-6 py-16 text-center text-zinc-500">
-        全部背完，太棒了！
-        <button onClick={onClose} className="block mx-auto mt-4 px-4 py-2 rounded-lg text-sm bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 transition-colors">
-          返回
-        </button>
+      <div className="wrap wrap-narrow">
+        <div className="empty">
+          <span className="empty-ico">
+            <svg className="i i-lg">
+              <use href="#i-check" />
+            </svg>
+          </span>
+          <span className="empty-t">全部背完，太棒了！</span>
+          <span className="empty-d">这一轮的单词都已标记为会背，可以在「已背」里回看。</span>
+          <button onClick={onClose} className="btn btn-primary mt-2">
+            返回单词本
+          </button>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="max-w-md mx-auto px-6 py-10 space-y-6">
-      {/* 进度 */}
-      <div className="text-center text-sm text-zinc-400 dark:text-zinc-500">
-        还剩 {queue.length} 个单词
+    <div className="wrap wrap-narrow">
+      {/* 进度：分母冻结在开局词数，纹丝不动 */}
+      <div className="study-head">
+        <button onClick={onClose} className="icon-btn" title="退出背单词" aria-label="退出背单词">
+          <svg className="i">
+            <use href="#i-chev-l" />
+          </svg>
+        </button>
+        <span className="study-prog">
+          <span className="bar">
+            <i style={{ width: total > 0 ? `${(done / total) * 100}%` : '0%' }} />
+          </span>
+        </span>
+        <span className="study-count">
+          {done} / {total}
+        </span>
       </div>
 
-      {/* 单词卡 */}
-      <div className="bg-white border border-zinc-200 rounded-2xl p-10 text-center space-y-4 shadow-sm dark:bg-zinc-900 dark:border-zinc-700 dark:shadow-none">
-        <div className="text-4xl font-semibold text-zinc-900 dark:text-zinc-100">{word.word}</div>
-        {word.phonetic && <div className="text-zinc-400 dark:text-zinc-500">{word.phonetic}</div>}
-
-        {revealed ? (
-          <div className="space-y-2">
-            {word.meaning && <div className="text-xl text-zinc-800 dark:text-zinc-200">{word.meaning}</div>}
-            {word.example && <div className="text-sm text-zinc-500 italic">{word.example}</div>}
-            {word.exampleTranslation && <div className="text-sm text-zinc-400 dark:text-zinc-500">{word.exampleTranslation}</div>}
+      {/* 单词卡：点卡片翻面看中文 */}
+      <div className={`flip${revealed ? ' back' : ''}`}>
+        <div className="flip-in">
+          <div className="face">
+            <div className="face-word">{word.word}</div>
+            {word.phonetic && <div className="face-phon">{word.phonetic}</div>}
+            <div className="face-hint">先想想意思，再点下面看中文</div>
           </div>
-        ) : (
-          <button
-            onClick={() => setRevealed(true)}
-            className="px-4 py-2 rounded-lg text-sm bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 transition-colors"
-          >
-            显示中文
-          </button>
-        )}
+          <div className="face face-back">
+            {word.meaning ? (
+              <div className="face-mean">{word.meaning}</div>
+            ) : (
+              // 释义没到位时只报「获取中」，不把例句顶上来当释义 ——
+              // 否则用户会看到「一段话 + 这段话的中文」，误以为那就是单词释义。
+              <div className="face-mean face-mean-pending">释义获取中…</div>
+            )}
+            {word.meaning && word.example && <div className="face-ex">{word.example}</div>}
+            {word.meaning && word.exampleTranslation && (
+              <div className="face-ex-zh">{word.exampleTranslation}</div>
+            )}
+          </div>
+        </div>
       </div>
+
+      {!revealed && (
+        <button onClick={() => setRevealed(true)} className="btn btn-primary btn-block">
+          显示中文
+        </button>
+      )}
 
       {/* 操作按钮 */}
       {revealed && (
-        <div className="flex gap-3">
-          <button
-            onClick={() => handleResult(false)}
-            className="flex-1 py-2.5 rounded-lg bg-zinc-100 hover:bg-zinc-200 font-medium dark:bg-zinc-800 dark:hover:bg-zinc-700 transition-colors"
-          >
+        <div className="study-acts">
+          <button onClick={() => handleResult(false)} className="btn">
+            <svg className="i">
+              <use href="#i-undo" />
+            </svg>
             还不会
           </button>
-          <button
-            onClick={() => handleResult(true)}
-            className="flex-1 py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-white font-medium transition-colors"
-          >
+          <button onClick={() => handleResult(true)} className="btn btn-primary">
+            <svg className="i">
+              <use href="#i-check" />
+            </svg>
             会背
           </button>
         </div>
       )}
 
-      <button onClick={onClose} className="w-full text-center text-sm text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">
+      <button onClick={onClose} className="btn btn-quiet self-center">
         退出背单词
       </button>
     </div>

@@ -29,6 +29,9 @@
 ## 单词中文翻译：Deepseek（音标用英文词典）
 - **决策**：中文释义用 Deepseek `translateWord`，音标/英文释义用 Free Dictionary API。
 - **理由**：英文词典（dictionaryapi.dev）只给英文释义，用户要中文，故用 Deepseek 补。加词时「快速插入无释义 → 后台异步补释义」，避免卡 UI。
+- **⚠️ 此决策已被 v1.4.6 取代**：Free Dictionary 在国内 3/3 请求卡满 6 秒超时，而它查到的英文释义
+  又会被中文覆盖 —— 贡献只剩音标，却让每次点词白等 6 秒。现改为 `deepseek.lookupWords` 一次拿回
+  「音标 + 中文释义」。见文末「v1.4.6 决策 · 查词放弃 free-dictionary」。**不要再按本条目实现。**
 
 ## 单词去重 / 背单词：复用 status 字段
 - **决策**：去重靠 `getWordByText` 查重；背单词复用 `status` 字段（`learning`=未背 / `mastered`=已背）。
@@ -149,3 +152,31 @@
   - **刻意不修命名**：给 package.json 加顶层 `productName` 会让 userData 指向新目录，用户现有的单词本/历史/Key 会**看起来**全部丢失（其实还在旧目录）。收益只是目录名好看，风险是数据错位，不划算。真要修只能配套写一次启动迁移。
 - **分发注意**：安装包本身安全；但 `%APPDATA%\nacl-english-listening\` 整个目录、以及 `app.db` 单文件，**都不能发给别人**（含 Key、单词本、历史）。
 
+
+## v1.4.6 决策 · 查词放弃 free-dictionary，音标改由 Deepseek 一并给出
+- **背景**：用户反馈「点词要查好久才出释义，太鸡肋」。
+- **实测（`design/profile-word-lookup.cjs`，分段计时）**：
+  - `lookupWord`（api.dictionaryapi.dev）3/3 请求 **6005 / 6017 / 6008 ms 全部超时失败**
+    —— DNS 被污染，TCP 建得起来但拿不到响应，每次固定卡满 6 秒；
+  - `translateWord`（Deepseek）385–731 ms 正常。
+  - 合计每次点词 ≈ **6.5 秒**，其中 6 秒纯白等。
+- **关键事实（原本被忽略）**：英文词典查到的 `meaning` 在代码里**会被中文翻译覆盖**
+  （`if (zh) meaning = zh`），所以它唯一实际贡献只有 **音标**。为一个音标等 6 秒不成立。
+- **决策**：删掉该依赖，新增 `deepseek.lookupWords(words, apiKey, fetcher, signal)`
+  —— 一次请求（JSON 模式）批量返回「音标 + 中文释义」。**不要试图保留它作为「音标来源之一」**。
+- **替代方案与取舍**：
+  - 方案 A（采纳）：`lookupWords` 一次拿全部。收益 6.5s → 0.7s；代价是音标质量依赖模型，
+    用 prompt 约束格式（统一斜杠包裹）+ `normalizePhonetic` 兜底。
+  - 方案 B（否决）：保留词典但**并发 + 800ms 短超时**。国内 100% 拿不到，那 800ms 纯浪费。
+  - 方案 C（否决）：引入本地词库。词典文件体积大、释义质量参差，收益不抵维护成本。
+- **配套优化**：
+  - **预取**：点第一个词时后台把整句（≤24 个词）一次查完 → 后续点词 0 毫秒（实测）。
+    只在用户真的点词时才触发，避免打开页面就批量烧 token。
+  - **负缓存 TTL 60 秒**：把原来的「查不到不缓存」改掉。旧策略本意是别把网络抖动钉死，
+    副作用却是**连点同一个生僻词会一次次重打网络**。短 TTL 两头兼顾。
+  - **模型漏返回的词不写负缓存**：批量请求时模型偶尔漏词，若按「没返回 = 查不到」缓存，
+    那个词会误显示「查不到释义」整整一分钟。已加单测锁住。
+- **归档而非硬删**：`src/main/dictionary.ts` 与 `tests/unit/dictionary.test.ts` 移到
+  `design/_archived/removed-dictionary-module-1.4.6/`。⚠️ **归档不要放 `dist/`** ——
+  electron-builder 打包时会清空输出目录下不属于它自己的内容（本轮实际踩到，文件被删后靠 git 恢复）。
+- **可复现的结论**：`node design/bench-word-lookup.mjs`（先复制数据库到临时目录，不碰用户数据）。

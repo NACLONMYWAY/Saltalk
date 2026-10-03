@@ -8,9 +8,10 @@ import {
   extractJson,
   generateDialogue,
   generateExamDialogue,
+  lookupWords,
   parseCetResponse,
   parseDialogueResponse,
-  translateWord
+  parseGlosses
 } from '../../src/main/deepseek.ts'
 import { cetDialogue, cetJson, countWords } from './helpers/cetFixture.ts'
 
@@ -362,20 +363,86 @@ describe('generateExamDialogue', () => {
   })
 })
 
-describe('translateWord', () => {
-  it('返回中文释义', async () => {
-    const mockFetch = (async () =>
-      ({
-        ok: true,
-        json: async () => ({ choices: [{ message: { content: '咖啡' } }] })
-      }) as unknown as Response) as typeof fetch
-    const zh = await translateWord('coffee', 'sk-test', mockFetch)
-    assert.equal(zh, '咖啡')
+describe('parseGlosses', () => {
+  it('正常解析音标与释义', () => {
+    const r = parseGlosses('{"words":[{"word":"Coffee","phonetic":"ˈkɒfi","meaning":"咖啡"}]}')
+    assert.equal(r.length, 1)
+    assert.equal(r[0].word, 'coffee')
+    assert.equal(r[0].phonetic, '/ˈkɒfi/')
+    assert.equal(r[0].meaning, '咖啡')
   })
 
-  it('HTTP 错误时抛错', async () => {
-    const mockFetch = (async () =>
+  it('音标已带斜杠时不重复包裹', () => {
+    const r = parseGlosses('{"words":[{"word":"a","phonetic":"/eɪ/","meaning":"一个"}]}')
+    assert.equal(r[0].phonetic, '/eɪ/')
+  })
+
+  it('音标缺失给 null，释义为空串也给 null', () => {
+    const r = parseGlosses('{"words":[{"word":"a","phonetic":null,"meaning":"   "}]}')
+    assert.equal(r[0].phonetic, null)
+    assert.equal(r[0].meaning, null)
+  })
+
+  it('脏数据跳过而不抛错', () => {
+    assert.deepEqual(parseGlosses('not json'), [])
+    assert.deepEqual(parseGlosses('{"nope":1}'), [])
+    assert.deepEqual(parseGlosses('{"words":[null,1,"x",{"word":""}]}'), [])
+  })
+})
+
+describe('lookupWords', () => {
+  const reply = (content: string): typeof fetch =>
+    (async () =>
+      ({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content } }] })
+      }) as unknown as Response) as typeof fetch
+
+  it('一次请求拿回多个词的音标与中文释义', async () => {
+    const r = await lookupWords(
+      ['negotiate', 'reception'],
+      'sk-test',
+      reply(
+        JSON.stringify({
+          words: [
+            { word: 'negotiate', phonetic: 'nɪˈɡoʊʃieɪt', meaning: '谈判；协商' },
+            { word: 'reception', phonetic: 'rɪˈsepʃn', meaning: '接待；前台' }
+          ]
+        })
+      )
+    )
+    assert.equal(r.length, 2)
+    assert.equal(r[0].meaning, '谈判；协商')
+    assert.equal(r[1].phonetic, '/rɪˈsepʃn/')
+  })
+
+  it('空数组不发请求', async () => {
+    let called = 0
+    const spy = (async () => {
+      called++
+      return { ok: true, json: async () => ({}) } as unknown as Response
+    }) as typeof fetch
+    assert.deepEqual(await lookupWords([], 'sk-test', spy), [])
+    assert.deepEqual(await lookupWords(['  ', ''], 'sk-test', spy), [])
+    assert.equal(called, 0)
+  })
+
+  it('去重并转小写（同一个词只查一次）', async () => {
+    let seen = ''
+    const spy = (async (_u: string | URL | Request, init?: RequestInit) => {
+      seen = String((JSON.parse(String(init?.body)) as { messages: { content: string }[] }).messages[0].content)
+      return {
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: '{"words":[]}' } }] })
+      } as unknown as Response
+    }) as unknown as typeof fetch
+    await lookupWords(['Coffee', 'coffee', 'COFFEE'], 'sk-test', spy)
+    assert.equal(seen.split('单词：')[1].split('\n')[0].trim(), 'coffee')
+  })
+
+  it('HTTP 错误时抛错（由调用方决定降级）', async () => {
+    const bad = (async () =>
       ({ ok: false, status: 401, json: async () => ({}) }) as unknown as Response) as typeof fetch
-    await assert.rejects(() => translateWord('coffee', 'bad', mockFetch), /401/)
+    await assert.rejects(() => lookupWords(['coffee'], 'bad', bad), /401/)
   })
 })

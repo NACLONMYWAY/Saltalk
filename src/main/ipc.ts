@@ -135,6 +135,9 @@ export function registerIpc(db: AppDatabase, service: AppService): void {
     (_e, rawWord: string, sourceSentenceId: string | null, example: string | null, exampleTranslation: string | null) =>
       service.addWordToBook(rawWord, sourceSentenceId, example, exampleTranslation)
   )
+  /** 点词预览：返回该词的意思（不落库），用于点击单词后即时展示 */
+  ipcMain.handle('word:preview', (_e, rawWord: string) => service.previewWord(rawWord))
+  ipcMain.handle('word:prefetch', (_e, rawWords: string[]) => service.prefetchWords(rawWords))
   ipcMain.handle('word:list', () => db.listWords().map(toWordView))
   ipcMain.handle('word:due', () => db.getDueWords(Date.now()))
   ipcMain.handle('word:delete', (_e, id: string) => db.deleteWord(id))
@@ -144,6 +147,8 @@ export function registerIpc(db: AppDatabase, service: AppService): void {
   ipcMain.handle('word:review', (_e, id: string, remembered: boolean) =>
     service.reviewWord(id, remembered)
   )
+  /** 补齐释义为空的单词（老数据 / 加入时网络还没回来的词），返回补齐条数 */
+  ipcMain.handle('word:enrichMissing', (_e, limit?: number) => service.enrichMissingWords(limit))
 
   // ---------- stats ----------
   ipcMain.handle('stats:get', () => service.getWordStats())

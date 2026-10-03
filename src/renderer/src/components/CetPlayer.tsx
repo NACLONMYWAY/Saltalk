@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import type { QuestionView, SentenceView } from '../../../preload/index.ts'
 import {
   ANSWER_SECONDS,
@@ -20,6 +20,32 @@ interface CetPlayerProps {
   /** 引导语音频 URL（材料播放前播报）；可为 null，此时直接进对话 */
   introUrl?: string | null
 }
+
+/** 真题节奏的四个阶段，只用于展示「现在走到哪一步」 */
+const RAIL = ['考试说明', '对话材料', '朗读题干', '作答']
+
+/** 当前处于第几步；finished = 4 表示全程走完。idle 时返回 -1（都不高亮） */
+function railIndex(phase: Phase): number {
+  switch (phase) {
+    case 'intro':
+      return 0
+    case 'dialogue':
+      return 1
+    case 'stem':
+      return 2
+    case 'answering':
+    case 'answered':
+      return 3
+    case 'finished':
+      return 4
+    default:
+      return -1
+  }
+}
+
+/** 环形倒计时的几何参数 */
+const RING_R = 13
+const RING_C = 2 * Math.PI * RING_R
 
 export default function CetPlayer({ sentences, questions, introUrl = null }: CetPlayerProps) {
   const [phase, setPhase] = useState<Phase>('idle')
@@ -283,107 +309,160 @@ export default function CetPlayer({ sentences, questions, introUrl = null }: Cet
   const correctCount = countCorrect(answers, questions)
   const running =
     phase === 'intro' || phase === 'dialogue' || phase === 'stem' || phase === 'answering' || phase === 'answered'
+  const rail = railIndex(phase)
 
   if (total === 0) {
     return (
-      <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
-        当前内容不是四六级听力题（没有题目数据）。请点上方「生成听力题」重新生成。
+      <div className="note note-warn">
+        <svg className="i">
+          <use href="#i-alert" />
+        </svg>
+        <span>当前内容不是四六级听力题（没有题目数据）。请点上方「生成听力题」重新生成。</span>
       </div>
     )
   }
 
   return (
-    <div className="space-y-4">
+    <div className="cet">
       {/* 工具栏 */}
-      <div className="flex gap-2 items-center flex-wrap text-sm">
+      <div className="toolbar">
         {phase === 'idle' && (
-          <button
-            onClick={startListening}
-            className="px-4 py-1.5 rounded-lg bg-zinc-900 text-zinc-50 font-medium hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300 transition-colors"
-          >
+          <button onClick={startListening} className="btn btn-primary">
+            <svg className="i">
+              <use href="#i-play" />
+            </svg>
             开始听力
           </button>
         )}
         {running && (
-          <button
-            onClick={stopAll}
-            className="px-3 py-1.5 rounded-lg bg-white border border-zinc-300 hover:bg-zinc-100 dark:bg-zinc-900 dark:border-zinc-700 dark:hover:bg-zinc-800 transition-colors"
-          >
+          <button onClick={stopAll} className="btn">
+            <svg className="i">
+              <use href="#i-stop" />
+            </svg>
             停止
           </button>
         )}
         {phase === 'finished' && (
-          <button
-            onClick={startListening}
-            className="px-3 py-1.5 rounded-lg bg-white border border-zinc-300 hover:bg-zinc-100 dark:bg-zinc-900 dark:border-zinc-700 dark:hover:bg-zinc-800 transition-colors"
-          >
+          <button onClick={startListening} className="btn">
+            <svg className="i">
+              <use href="#i-undo" />
+            </svg>
             重做一遍
           </button>
         )}
-        <label className="flex items-center gap-1.5 text-zinc-500 dark:text-zinc-400 cursor-pointer select-none">
+
+        <label className="chip">
           <input type="checkbox" checked={allowReplay} onChange={(e) => setAllowReplay(e.target.checked)} />
-          允许重听材料（真题只播一遍）
+          <span className="chip-dot" />
+          允许重听材料
         </label>
-        <label className="flex items-center gap-1.5 text-zinc-500 dark:text-zinc-400 cursor-pointer select-none">
+
+        <label className="chip">
           <input type="checkbox" checked={slow} onChange={(e) => setSlow(e.target.checked)} />
+          <span className="chip-dot" />
           慢速
         </label>
       </div>
 
+      {/* 真题节奏：走到哪一步 */}
+      <div className="rail">
+        {RAIL.map((label, i) => (
+          <Fragment key={label}>
+            <span className={`rail-step${i < rail ? ' done' : ''}${i === rail ? ' active' : ''}`}>
+              <span className="rail-dot">
+                {i < rail ? (
+                  <svg className="i i-xs">
+                    <use href="#i-check" />
+                  </svg>
+                ) : (
+                  i + 1
+                )}
+              </span>
+              {label}
+            </span>
+            {i < RAIL.length - 1 && <span className="rail-line" />}
+          </Fragment>
+        ))}
+      </div>
+
       {/* 进度与成绩 */}
-      <div className="flex items-center gap-3 text-xs text-zinc-400 dark:text-zinc-500 flex-wrap">
-        <span>共 {total} 题</span>
-        <span>已答 {answeredCount}</span>
-        {phase !== 'idle' && <span>当前第 {Math.min(qIndex + 1, total)} 题</span>}
+      <div className="meta">
+        <span>
+          共 <b>{total}</b> 题
+        </span>
+        <span className="meta-sep" />
+        <span>
+          已答 <b>{answeredCount}</b>
+        </span>
+        {phase !== 'idle' && (
+          <>
+            <span className="meta-sep" />
+            <span>
+              当前第 <b>{Math.min(qIndex + 1, total)}</b> 题
+            </span>
+          </>
+        )}
         {phase === 'finished' && (
-          <span className="text-zinc-600 dark:text-zinc-300 font-medium">
-            正确 {correctCount} / {total}
-          </span>
+          <>
+            <span className="meta-sep" />
+            <span>
+              正确{' '}
+              <b className="strong">
+                {correctCount} / {total}
+              </b>
+            </span>
+          </>
         )}
       </div>
 
       {/* 播放状态 */}
       {phase === 'intro' && (
-        <div className="text-sm text-zinc-500 dark:text-zinc-400 flex items-center gap-2">
-          <span className="inline-block w-2 h-2 rounded-full bg-sky-500 animate-pulse" />
+        <div className="playstate">
+          <span className="pulse" />
           正在播放考试说明…
         </div>
       )}
       {phase === 'dialogue' && (
-        <div className="text-sm text-zinc-500 dark:text-zinc-400 flex items-center gap-2 flex-wrap">
-          <span className="inline-block w-2 h-2 rounded-full bg-sky-500 animate-pulse" />
+        <div className="playstate">
+          <span className="pulse" />
           正在播放对话材料（第 {playingSeq + 1} 句）…
           {allowReplay && (
-            <button
-              onClick={() => playSentence(0)}
-              className="px-2 py-0.5 rounded border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-            >
+            <button onClick={() => playSentence(0)} className="btn btn-xs ml-1">
+              <svg className="i i-xs">
+                <use href="#i-undo" />
+              </svg>
               重听
             </button>
           )}
         </div>
       )}
       {phase === 'stem' && (
-        <div className="text-sm text-zinc-500 dark:text-zinc-400 flex items-center gap-2">
-          <span className="inline-block w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+        <div className="playstate">
+          <span className="pulse pulse-o" />
           正在朗读第 {qIndex + 1} 题题干…
         </div>
       )}
 
       {phase === 'idle' && (
-        <p className="text-xs text-zinc-400 dark:text-zinc-500 leading-relaxed">
-          选项已全部列在下面（同真题：试卷上只有选项、没有问题，题干由录音读出）。
-          点「开始听力」按真题节奏走：先播考试说明 → 放对话 → 逐题朗读题干（带题号）并留 15 秒；
-          也可以直接点选项作答。
-        </p>
+        <div className="note">
+          <svg className="i">
+            <use href="#i-info" />
+          </svg>
+          <span>
+            选项已全部列在下面（同真题：试卷上只有选项、没有问题，题干由录音读出）。
+            点「开始听力」按真题节奏走：先播考试说明 → 放对话 → 逐题朗读题干（带题号）并留 15 秒；
+            也可以直接点选项作答。
+          </span>
+        </div>
       )}
 
       {/* 全部题目：选项始终可见 */}
-      <div className="space-y-3">
+      <div className="q-list">
         {questions.map((q, i) => (
           <QuestionCard
             key={q.id}
             index={i}
+            total={total}
             question={q}
             answer={answers[i]}
             active={running && i === qIndex}
@@ -402,27 +481,37 @@ export default function CetPlayer({ sentences, questions, introUrl = null }: Cet
 
       {/* 成绩明细 */}
       {phase === 'finished' && (
-        <div className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-          <div className="text-sm text-zinc-900 dark:text-zinc-100 font-medium">
-            本轮完成：答对 {correctCount} / {total} 题
+        <div className="card card-pad">
+          <div className="big-score">
+            <span className="n">{correctCount}</span>
+            <span className="d">/ {total} 题答对</span>
           </div>
-          <div className="mt-2 space-y-1">
-            {questions.map((q, i) => (
-              <div key={q.id} className="text-xs text-zinc-500 dark:text-zinc-400">
-                第 {i + 1} 题 · 你选 {isAnswered(answers[i]) ? optionLabel(answers[i]) : '未作答'} · 正确{' '}
-                {optionLabel(q.answerIndex)}
-              </div>
-            ))}
+          <div className="mt-3">
+            {questions.map((q, i) => {
+              const ok = isCorrect(answers[i], q.answerIndex)
+              return (
+                <div key={q.id} className="score-row">
+                  <span className="sr-no">第 {i + 1} 题</span>
+                  <span className="sr-you">
+                    你选 {isAnswered(answers[i]) ? optionLabel(answers[i]) : '未作答'}
+                  </span>
+                  <span className="sr-right">正确 {optionLabel(q.answerIndex)}</span>
+                  <span className="score-bar">
+                    <i style={{ width: ok ? '100%' : '0%' }} />
+                  </span>
+                </div>
+              )
+            })}
           </div>
         </div>
       )}
 
       {/* 原文与翻译（答完或手动展开） */}
-      <div className="space-y-2 border-t border-zinc-200 dark:border-zinc-800 pt-3">
-        <button
-          onClick={() => setShowTranscript((v) => !v)}
-          className="text-sm text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
-        >
+      <div className="transcript">
+        <button onClick={() => setShowTranscript((v) => !v)} className="btn btn-sm btn-quiet">
+          <svg className="i i-sm">
+            <use href={showTranscript ? '#i-chev' : '#i-chev-r'} />
+          </svg>
           {showTranscript ? '收起原文与翻译' : '查看原文与翻译（会揭露答案）'}
         </button>
         {showTranscript && <DialoguePlayer sentences={sentences} />}
@@ -433,6 +522,7 @@ export default function CetPlayer({ sentences, questions, introUrl = null }: Cet
 
 interface QuestionCardProps {
   index: number
+  total: number
   question: QuestionView
   answer: number | null | undefined
   /** 是否为真题节奏中正在处理的那一题 */
@@ -450,6 +540,7 @@ interface QuestionCardProps {
 
 function QuestionCard({
   index,
+  total,
   question,
   answer,
   active,
@@ -468,96 +559,104 @@ function QuestionCard({
   const stemVisible = revealStem || answered
 
   return (
-    <div
-      className={`rounded-xl border p-4 space-y-3 transition-colors ${
-        active
-          ? 'border-zinc-400 bg-zinc-100 dark:border-zinc-500 dark:bg-zinc-800'
-          : 'border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900'
-      }`}
-    >
-      <div className="flex items-center gap-3 flex-wrap">
-        <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">第 {index + 1} 题</span>
-        {counting && <span className="text-xs text-amber-600 dark:text-amber-400">剩余 {countdown} 秒</span>}
-        {answered && (
-          <span
-            className={`text-xs font-medium ${
-              correct ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500 dark:text-red-400'
-            }`}
-          >
-            {correct ? '答对 ✓' : `答错，正确答案 ${optionLabel(question.answerIndex)}`}
+    <div className={`q${active ? ' active' : ''}`}>
+      <div className="q-head">
+        <span className="q-no">
+          第 {index + 1} 题 <span>/ {total}</span>
+        </span>
+
+        {counting && (
+          // 注意 1：类名必须叫 cd-ring，不能叫 ring —— ring 是 Tailwind 的工具类，
+          //   会给元素加一层 3px 蓝色 box-shadow（--tw-ring-shadow），纯黑白体系里是明显杂色。
+          //   诊断依据：getComputedStyle(.ring).boxShadow === "rgba(59,130,246,0.5) 0 0 0 3px"。
+          // 注意 2：不要给这个非交互的 span 加 title（会用系统 tooltip 方框），
+          //   也无障碍信息走 aria-label；秒数本身已经画在环里了。
+          <span className="cd-ring" role="timer" aria-label={`剩余 ${countdown} 秒`}>
+            <svg width="30" height="30" viewBox="0 0 30 30">
+              <circle className="rb" cx="15" cy="15" r={RING_R} />
+              <circle
+                className="rf"
+                cx="15"
+                cy="15"
+                r={RING_R}
+                strokeDasharray={RING_C}
+                strokeDashoffset={RING_C * (1 - countdown / ANSWER_SECONDS)}
+              />
+            </svg>
+            <span className="cd-ring-num">{countdown}</span>
           </span>
         )}
 
-        <div className="ml-auto flex gap-2">
+        {answered && (
+          <span className={`tag ${correct ? 'tag-ok' : 'tag-no'}`}>
+            <svg className="i i-xs">
+              <use href={correct ? '#i-check' : '#i-x'} />
+            </svg>
+            {correct ? '答对' : `答错 · 正确答案 ${optionLabel(question.answerIndex)}`}
+          </span>
+        )}
+
+        <div className="q-tools">
           {!answered && (
-            <button
-              onClick={onToggleReveal}
-              className="px-2 py-0.5 rounded text-xs border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-            >
+            <button onClick={onToggleReveal} className="btn btn-xs">
+              <svg className="i i-xs">
+                <use href={stemVisible ? '#i-chev' : '#i-text'} />
+              </svg>
               {stemVisible ? '收起题干' : '显示题干'}
             </button>
           )}
           {question.stemAudioUrl ? (
-            <button
-              onClick={onReplayStem}
-              className="px-2 py-0.5 rounded text-xs border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-              title="重听题干朗读"
-            >
+            <button onClick={onReplayStem} className="btn btn-xs" title="重听题干朗读">
+              <svg className="i i-xs">
+                <use href="#i-vol" />
+              </svg>
               重听题干
             </button>
           ) : (
-            <span className="text-xs text-zinc-400 dark:text-zinc-500">题干音频未就绪</span>
+            <span className="dim">题干音频未就绪</span>
           )}
         </div>
       </div>
 
       {stemVisible && (
-        <div className="text-sm text-zinc-700 dark:text-zinc-300">
+        <div className="stem">
           {question.stem}
-          {question.stemChinese && (
-            <span className="text-zinc-400 dark:text-zinc-500"> {question.stemChinese}</span>
-          )}
+          {question.stemChinese && <span className="zh-inline"> {question.stemChinese}</span>}
         </div>
       )}
 
-      <div className="space-y-1.5">
+      <div className="opts">
         {question.options.map((opt, i) => {
           const chosen = answered && answer === i
           const isAnswer = answered && question.answerIndex === i
-          let cls =
-            'bg-white border-zinc-200 hover:bg-zinc-50 dark:bg-zinc-950 dark:border-zinc-800 dark:hover:bg-zinc-800'
-          if (isAnswer) {
-            cls = 'bg-emerald-50 border-emerald-400 dark:bg-emerald-950/40 dark:border-emerald-700'
-          } else if (chosen) {
-            cls = 'bg-red-50 border-red-400 dark:bg-red-950/40 dark:border-red-700'
-          }
+          // 对错只靠文字 / 边框 / 左侧状态轨表达；语义色可整体关成纯黑白
+          const state = isAnswer ? 'correct' : chosen ? 'wrong' : 'plain'
           return (
             <button
               key={i}
+              data-state={state}
               onClick={() => onPick(i)}
               disabled={answered}
-              className={`w-full text-left px-3 py-2 rounded-lg border text-sm transition-colors disabled:cursor-default flex items-start gap-2 ${cls}`}
+              className="opt"
             >
-              <span className="shrink-0 font-medium text-zinc-400 dark:text-zinc-500">
-                {OPTION_LABELS[i] ?? i + 1}.
-              </span>
-              <span className="flex-1 text-zinc-800 dark:text-zinc-200">{opt}</span>
-              {isAnswer && <span className="shrink-0 text-xs text-emerald-600 dark:text-emerald-400">正确答案</span>}
-              {chosen && !isAnswer && <span className="shrink-0 text-xs text-red-500 dark:text-red-400">你的选择</span>}
+              <span className="opt-key">{OPTION_LABELS[i] ?? i + 1}.</span>
+              <span className="opt-text">{opt}</span>
+              {isAnswer && <span className="opt-tag">正确答案</span>}
+              {chosen && !isAnswer && <span className="opt-tag">你的选择</span>}
             </button>
           )
         })}
       </div>
 
       {answered && question.explanation && (
-        <div className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">{question.explanation}</div>
+        <div className="exp">
+          <div className="exp-h">解析</div>
+          {question.explanation}
+        </div>
       )}
 
       {showNext && (
-        <button
-          onClick={onNext}
-          className="px-3 py-1.5 rounded-lg text-sm bg-zinc-900 text-zinc-50 font-medium hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300 transition-colors"
-        >
+        <button onClick={onNext} className="btn btn-primary mt-3">
           {isLast ? '查看结果' : '下一题'}
         </button>
       )}
